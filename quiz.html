@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>問題演習 - 社労士</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ヘッダー -->
+<div class="header" id="header">
+  <button onclick="confirmExit()" style="background:none;border:none;color:#fff;font-size:22px;cursor:pointer;padding:2px 6px;">‹</button>
+  <h1 id="header-title">読み込み中…</h1>
+  <span class="header-badge" id="header-mode"></span>
+</div>
+
+<!-- プログレスバー -->
+<div class="progress-bar-wrap">
+  <div class="progress-bar" id="progress-bar" style="width:0%"></div>
+</div>
+
+<!-- ===== 問題画面 ===== -->
+<div id="quiz-screen">
+  <div class="quiz-meta">
+    <span class="quiz-counter" id="counter">1 / 30</span>
+    <span id="score-live" style="font-size:13px; color:var(--gray-500)"></span>
+  </div>
+
+  <div class="question-card">
+    <div>
+      <span class="question-category" id="q-category"></span>
+      <span class="question-difficulty" id="q-difficulty"></span>
+    </div>
+    <p class="question-text" id="q-text"></p>
+  </div>
+
+  <div class="answer-buttons" id="answer-buttons">
+    <button class="btn-maru" id="btn-maru" onclick="handleAnswer(true)">
+      <span>○</span>
+      <span class="answer-label">正しい</span>
+    </button>
+    <button class="btn-batsu" id="btn-batsu" onclick="handleAnswer(false)">
+      <span>✕</span>
+      <span class="answer-label">誤り</span>
+    </button>
+  </div>
+
+  <!-- 解説パネル（回答後に表示） -->
+  <div id="explanation-panel" class="hidden">
+    <div class="explanation-panel" id="exp-panel">
+      <div class="explanation-header" id="exp-header">
+        <span class="explanation-result-icon" id="exp-icon"></span>
+        <span id="exp-result-text"></span>
+      </div>
+      <div class="explanation-body">
+        <div id="correct-answer-note" class="correct-answer-note hidden"></div>
+        <div id="exp-text"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="next-btn-wrap hidden" id="next-btn-wrap">
+    <button class="btn btn-primary" style="width:100%; font-size:16px; padding:16px;" id="next-btn" onclick="goNext()">
+      次の問題へ ›
+    </button>
+  </div>
+</div>
+
+<!-- ===== 結果画面 ===== -->
+<div id="result-screen" class="hidden">
+  <div class="result-card">
+    <div class="result-emoji" id="result-emoji">🎉</div>
+    <div class="result-title" id="result-title">お疲れ様でした！</div>
+    <div class="result-score">
+      <span id="result-correct">0</span>
+      <span> / </span>
+      <span id="result-total">0</span>
+      <span style="font-size:20px;color:var(--gray-500)">問</span>
+    </div>
+    <div class="result-accuracy">正解率 <strong id="result-accuracy">0%</strong></div>
+
+    <div class="result-breakdown">
+      <div class="breakdown-item">
+        <div class="breakdown-value correct-count" id="res-correct">0</div>
+        <div class="breakdown-label">✅ 正解</div>
+      </div>
+      <div class="breakdown-item">
+        <div class="breakdown-value wrong-count" id="res-wrong">0</div>
+        <div class="breakdown-label">❌ 不正解</div>
+      </div>
+    </div>
+
+    <div id="weak-notice" class="hidden" style="background:var(--danger-bg);border-radius:10px;padding:12px 14px;text-align:left;margin-top:4px;">
+      <div style="font-size:13px;font-weight:700;color:var(--danger);margin-bottom:4px;">⚠ 苦手問題が追加されました</div>
+      <div style="font-size:12px;color:var(--danger);" id="weak-notice-text"></div>
+    </div>
+  </div>
+
+  <div class="result-actions">
+    <button class="btn btn-primary" style="min-height:52px;font-size:16px;" onclick="restartSame()">
+      🔄 もう一度（同じモード）
+    </button>
+    <button class="btn btn-secondary" style="min-height:52px;font-size:16px;" id="retry-weak-btn" onclick="retryWeak()">
+      🎯 苦手問題だけやり直す
+    </button>
+    <button class="btn btn-gray" style="min-height:52px;font-size:16px;" onclick="goHome()">
+      🏠 トップに戻る
+    </button>
+  </div>
+</div>
+
+<!-- 離脱確認モーダル -->
+<div class="modal-overlay" id="exit-modal" onclick="closeExitModal(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">演習を終了しますか？</div>
+    <div class="modal-subtitle" style="margin-bottom:20px">途中の進捗は保存されますが、今回の演習は結果として記録されません。</div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-gray" onclick="closeExitModal()" style="flex:1;min-height:48px;">続ける</button>
+      <button class="btn btn-danger" onclick="goHome()" style="flex:1;min-height:48px;">終了する</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/quiz.js"></script>
+<script>
+  const SUBJECT_NAMES = {
+    kokumin_kenko_hoken: '国民健康保険法',
+    kenkou_hoken: '健康保険法',
+  };
+  const DIFF_LABELS = { easy: '易', normal: '標準', hard: '難' };
+  const DIFF_CLASS  = { easy: 'diff-easy', normal: 'diff-normal', hard: 'diff-hard' };
+  const MODE_LABELS = { all: '全問', weak: '苦手' };
+
+  let quiz = null;
+
+  async function init() {
+    const { subject, mode } = QuizAPI.getParams();
+    const subjectName = SUBJECT_NAMES[subject] || subject;
+
+    document.getElementById('header-title').textContent = subjectName;
+    document.getElementById('header-mode').textContent = MODE_LABELS[mode] || mode;
+
+    const allQ = await QuizAPI.loadQuestions(subject);
+    quiz = new QuizAPI.QuizController(allQ, subject, mode);
+
+    if (quiz.total === 0) {
+      showEmptyState(mode);
+      return;
+    }
+
+    renderQuestion();
+  }
+
+  function showEmptyState(mode) {
+    document.getElementById('quiz-screen').innerHTML = `
+      <div class="empty-state" style="margin-top:40px">
+        <div class="empty-state-icon">📭</div>
+        <div class="empty-state-title">
+          ${mode === 'weak' ? '苦手問題がありません' : '問題がありません'}
+        </div>
+        <div class="empty-state-desc" style="margin-bottom:24px">
+          ${mode === 'weak' ? 'まずは全問演習で問題を解いてみましょう' : '問題データを確認してください'}
+        </div>
+        <button class="btn btn-primary" onclick="goHome()" style="margin:0 auto;">トップに戻る</button>
+      </div>`;
+  }
+
+  function renderQuestion() {
+    const q = quiz.currentQ;
+    const idx = quiz.current;
+    const total = quiz.total;
+
+    // プログレス
+    document.getElementById('progress-bar').style.width = quiz.progress + '%';
+    document.getElementById('counter').textContent = `${idx + 1} / ${total}`;
+    document.getElementById('score-live').textContent =
+      quiz.correctCount + quiz.wrongCount > 0
+        ? `✅${quiz.correctCount} ❌${quiz.wrongCount}`
+        : '';
+
+    // カテゴリ・難易度
+    const catEl = document.getElementById('q-category');
+    catEl.textContent = q.category;
+
+    const diffEl = document.getElementById('q-difficulty');
+    diffEl.textContent = DIFF_LABELS[q.difficulty] || q.difficulty;
+    diffEl.className = 'question-difficulty ' + (DIFF_CLASS[q.difficulty] || '');
+
+    // 問題文
+    document.getElementById('q-text').textContent = q.question;
+
+    // ボタンリセット
+    document.getElementById('btn-maru').classList.remove('selected');
+    document.getElementById('btn-batsu').classList.remove('selected');
+    document.getElementById('btn-maru').disabled = false;
+    document.getElementById('btn-batsu').disabled = false;
+
+    // 解説・次へ非表示
+    document.getElementById('explanation-panel').classList.add('hidden');
+    document.getElementById('next-btn-wrap').classList.add('hidden');
+  }
+
+  function handleAnswer(userAnswer) {
+    if (quiz.answered) return;
+    const isCorrect = quiz.answer(userAnswer);
+
+    // ボタンハイライト
+    if (userAnswer === true) {
+      document.getElementById('btn-maru').classList.add('selected');
+    } else {
+      document.getElementById('btn-batsu').classList.add('selected');
+    }
+    document.getElementById('btn-maru').disabled = true;
+    document.getElementById('btn-batsu').disabled = true;
+
+    showExplanation(isCorrect, quiz.currentQ);
+  }
+
+  function showExplanation(isCorrect, q) {
+    const panel = document.getElementById('exp-panel');
+    const header = document.getElementById('exp-header');
+
+    panel.className = 'explanation-panel ' + (isCorrect ? 'correct' : 'wrong');
+    header.className = 'explanation-header ' + (isCorrect ? 'correct' : 'wrong');
+    document.getElementById('exp-icon').textContent = isCorrect ? '✅' : '❌';
+    document.getElementById('exp-result-text').textContent = isCorrect ? '正解！' : '不正解';
+
+    const noteEl = document.getElementById('correct-answer-note');
+    if (!isCorrect) {
+      const correctLabel = q.answer ? '○（正しい）' : '✕（誤り）';
+      noteEl.textContent = `正解は「${correctLabel}」です`;
+      noteEl.classList.remove('hidden');
+    } else {
+      noteEl.classList.add('hidden');
+    }
+
+    document.getElementById('exp-text').textContent = q.explanation;
+
+    document.getElementById('explanation-panel').classList.remove('hidden');
+
+    // 次へボタン
+    const nextWrap = document.getElementById('next-btn-wrap');
+    nextWrap.classList.remove('hidden');
+    const nextBtn = document.getElementById('next-btn');
+    if (quiz.isLast) {
+      nextBtn.textContent = '結果を見る 🏁';
+    } else {
+      nextBtn.textContent = '次の問題へ ›';
+    }
+
+    // スクロール
+    setTimeout(() => {
+      document.getElementById('explanation-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 100);
+  }
+
+  function goNext() {
+    if (quiz.isLast) {
+      showResult();
+    } else {
+      quiz.next();
+      renderQuestion();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+
+  function showResult() {
+    document.getElementById('progress-bar').style.width = '100%';
+    document.getElementById('quiz-screen').classList.add('hidden');
+    document.getElementById('result-screen').classList.remove('hidden');
+
+    const accuracy = quiz.accuracy;
+    let emoji = '😢', title = 'もう少し頑張ろう！';
+    if (accuracy >= 90) { emoji = '🏆'; title = '素晴らしい！完璧に近い！'; }
+    else if (accuracy >= 70) { emoji = '🎉'; title = 'よくできました！'; }
+    else if (accuracy >= 50) { emoji = '💪'; title = 'もう少しで合格ライン！'; }
+
+    document.getElementById('result-emoji').textContent = emoji;
+    document.getElementById('result-title').textContent = title;
+    document.getElementById('result-correct').textContent = quiz.correctCount;
+    document.getElementById('result-total').textContent = quiz.total;
+    document.getElementById('result-accuracy').textContent = accuracy + '%';
+    document.getElementById('res-correct').textContent = quiz.correctCount;
+    document.getElementById('res-wrong').textContent = quiz.wrongCount;
+
+    // 苦手問題の通知
+    const weakIds = QuizAPI.getWeakQuestionIds(QuizAPI.getParams().subject);
+    if (quiz.wrongCount > 0) {
+      document.getElementById('weak-notice').classList.remove('hidden');
+      document.getElementById('weak-notice-text').textContent =
+        `計${weakIds.length}問の苦手問題があります。「苦手問題だけやり直す」で集中練習しましょう。`;
+    }
+
+    if (weakIds.length === 0) {
+      document.getElementById('retry-weak-btn').disabled = true;
+      document.getElementById('retry-weak-btn').style.opacity = '0.4';
+    }
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function restartSame() {
+    const { subject, mode } = QuizAPI.getParams();
+    location.href = `quiz.html?subject=${subject}&mode=${mode}`;
+  }
+
+  function retryWeak() {
+    const { subject } = QuizAPI.getParams();
+    location.href = `quiz.html?subject=${subject}&mode=weak`;
+  }
+
+  function goHome() {
+    location.href = 'index.html';
+  }
+
+  function confirmExit() {
+    if (quiz && (quiz.correctCount + quiz.wrongCount) > 0) {
+      document.getElementById('exit-modal').classList.add('show');
+    } else {
+      goHome();
+    }
+  }
+
+  function closeExitModal(e) {
+    if (!e || e.target === document.getElementById('exit-modal')) {
+      document.getElementById('exit-modal').classList.remove('show');
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>

@@ -127,14 +127,42 @@
     </div>
   </div>
 
+  <!-- 厚生年金保険法カード -->
+  <div class="subject-card">
+    <div class="subject-card-header">
+      <div style="display:flex; justify-content:space-between; align-items:start">
+        <div>
+          <div class="subject-card-title">厚生年金保険法</div>
+          <div class="subject-card-meta">全30問（1回30問）・ 社会保険</div>
+        </div>
+        <button class="reset-btn" onclick="handleReset('kousei_nenkin', this)">リセット</button>
+      </div>
+    </div>
+    <div class="subject-card-stats">
+      <div class="stat-item">
+        <div class="stat-value" id="nenkin-attempts">—</div>
+        <div class="stat-label">累計回答</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="nenkin-accuracy">—</div>
+        <div class="stat-label">正解率</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" style="color:var(--danger)" id="nenkin-weak">—</div>
+        <div class="stat-label">苦手問題</div>
+      </div>
+    </div>
+    <div class="subject-card-actions">
+      <button class="btn btn-primary" onclick="openModal('kousei_nenkin')">
+        <span class="btn-icon">▶</span> 演習開始
+      </button>
+    </div>
+  </div>
+
   <div class="section-title">追加予定の科目</div>
 
   <div class="coming-soon-card">
     <div class="coming-soon-title">国民年金法</div>
-    <span class="coming-soon-badge">準備中</span>
-  </div>
-  <div class="coming-soon-card">
-    <div class="coming-soon-title">厚生年金保険法</div>
     <span class="coming-soon-badge">準備中</span>
   </div>
   <div class="coming-soon-card">
@@ -182,6 +210,7 @@
   const SUBJECTS = [
     { key: 'kokumin_kenko_hoken', file: 'kokumin_kenko_hoken', prefix: 'kokumin' },
     { key: 'kenkou_hoken',        file: 'kenkou_hoken',        prefix: 'kenkou'  },
+    { key: 'kousei_nenkin',       file: 'kousei_nenkin',       prefix: 'nenkin'  },
   ];
 
   let selectedMode = 'all';

@@ -26,13 +26,27 @@ function getSubjectData(subjectKey) {
 function recordAnswer(subjectKey, questionId, isCorrect) {
   const all = loadStorage();
   if (!all[subjectKey]) all[subjectKey] = { questions: {} };
-  const q = all[subjectKey].questions;
-  if (!q[questionId]) q[questionId] = { attempts: 0, correct: 0, wrong: 0 };
-  q[questionId].attempts++;
-  if (isCorrect) q[questionId].correct++;
-  else q[questionId].wrong++;
-  q[questionId].lastResult = isCorrect;
+  const qs = all[subjectKey].questions;
+  if (!qs[questionId]) qs[questionId] = { attempts: 0, correct: 0, wrong: 0, consecutiveCorrect: 0 };
+  const q = qs[questionId];
+  q.attempts++;
+
+  let wasJustMastered = false;
+  if (isCorrect) {
+    q.correct++;
+    q.consecutiveCorrect = (q.consecutiveCorrect || 0) + 1;
+    // 苦手問題に登録済みで3連続正解 → 苦手リストから除外
+    if (!q.mastered && q.wrong > 0 && q.consecutiveCorrect >= 3) {
+      q.mastered = true;
+      wasJustMastered = true;
+    }
+  } else {
+    q.wrong++;
+    q.consecutiveCorrect = 0;
+  }
+  q.lastResult = isCorrect;
   saveStorage(all);
+  return { wasJustMastered };
 }
 
 function getStats(subjectKey, totalQuestions) {
@@ -43,7 +57,8 @@ function getStats(subjectKey, totalQuestions) {
     if (q[id]) {
       totalAttempts += q[id].attempts;
       totalCorrect += q[id].correct;
-      if (q[id].wrong > 0) weakCount++;
+      // mastered（3連続正解済み）は苦手カウントから除外
+      if (q[id].wrong > 0 && !q[id].mastered) weakCount++;
     }
   }
   return { totalAttempts, totalCorrect, weakCount };
@@ -52,8 +67,15 @@ function getStats(subjectKey, totalQuestions) {
 function getWeakQuestionIds(subjectKey) {
   const data = getSubjectData(subjectKey);
   return Object.entries(data.questions)
-    .filter(([, v]) => v.wrong > 0)
+    .filter(([, v]) => v.wrong > 0 && !v.mastered)
     .map(([id]) => parseInt(id));
+}
+
+// 問題のマスター状態を取得（苦手リストから除外済みかどうか）
+function getQuestionConsecutive(subjectKey, questionId) {
+  const data = getSubjectData(subjectKey);
+  const q = data.questions[questionId];
+  return q ? { consecutiveCorrect: q.consecutiveCorrect || 0, mastered: !!q.mastered } : { consecutiveCorrect: 0, mastered: false };
 }
 
 function resetSubject(subjectKey) {
@@ -120,8 +142,8 @@ class QuizController {
     const isCorrect = userAnswer === this.currentQ.answer;
     if (isCorrect) this.correctCount++;
     else this.wrongCount++;
-    recordAnswer(this.subjectKey, this.currentQ.id, isCorrect);
-    return isCorrect;
+    const { wasJustMastered } = recordAnswer(this.subjectKey, this.currentQ.id, isCorrect);
+    return { isCorrect, wasJustMastered };
   }
 
   next() {
@@ -146,6 +168,7 @@ window.QuizAPI = {
   QuizController,
   getStats,
   getWeakQuestionIds,
+  getQuestionConsecutive,
   resetSubject,
   getParams,
 };

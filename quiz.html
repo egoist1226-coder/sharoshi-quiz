@@ -55,7 +55,11 @@
       </div>
       <div class="explanation-body">
         <div id="correct-answer-note" class="correct-answer-note hidden"></div>
+        <div id="mastered-notice" class="hidden" style="background:#d4edda;border:1px solid #c3e6cb;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:13px;color:#155724;font-weight:600;">
+          ✨ 3回連続正解！苦手リストから除外されました
+        </div>
         <div id="exp-text"></div>
+        <div id="source-no-text" class="hidden" style="margin-top:10px;font-size:12px;color:var(--gray-500);text-align:right;"></div>
       </div>
     </div>
   </div>
@@ -205,7 +209,8 @@
 
   function handleAnswer(userAnswer) {
     if (quiz.answered) return;
-    const isCorrect = quiz.answer(userAnswer);
+    const result = quiz.answer(userAnswer);
+    const { isCorrect, wasJustMastered } = result;
 
     // ボタンハイライト
     if (userAnswer === true) {
@@ -216,10 +221,10 @@
     document.getElementById('btn-maru').disabled = true;
     document.getElementById('btn-batsu').disabled = true;
 
-    showExplanation(isCorrect, quiz.currentQ);
+    showExplanation(isCorrect, quiz.currentQ, wasJustMastered);
   }
 
-  function showExplanation(isCorrect, q) {
+  function showExplanation(isCorrect, q, wasJustMastered = false) {
     const panel = document.getElementById('exp-panel');
     const header = document.getElementById('exp-header');
 
@@ -237,7 +242,24 @@
       noteEl.classList.add('hidden');
     }
 
+    // 3連続正解バナー
+    const masteredEl = document.getElementById('mastered-notice');
+    if (wasJustMastered) {
+      masteredEl.classList.remove('hidden');
+    } else {
+      masteredEl.classList.add('hidden');
+    }
+
     document.getElementById('exp-text').textContent = q.explanation;
+
+    // 問題集番号（source_no フィールドがある場合に表示）
+    const srcEl = document.getElementById('source-no-text');
+    if (q.source_no) {
+      srcEl.textContent = `（問題集 問${q.source_no}）`;
+      srcEl.classList.remove('hidden');
+    } else {
+      srcEl.classList.add('hidden');
+    }
 
     document.getElementById('explanation-panel').classList.remove('hidden');
 

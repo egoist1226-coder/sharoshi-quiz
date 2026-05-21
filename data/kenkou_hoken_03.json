@@ -173,7 +173,8 @@
     "question": "食事療養に要した費用は、保険外併用療養費の支給の対象となる。",
     "answer": false,
     "explanation": "食事療養に係る費用は保険外併用療養費の対象とはならない（法86条1項）。",
-    "difficulty": "normal"
+    "difficulty": "normal",
+    "source_no": 241
   },
   {
     "id": 323,
@@ -189,7 +190,8 @@
     "question": "患者申出療養は、高度の医療技術を用いた療養であって、当該療養を受けようとする者の申出に基づき、適正な医療の効率的な提供を図る観点から保険医療機関において行うものである。",
     "answer": true,
     "explanation": "法86条の2の規定による（患者申出療養の定義）。",
-    "difficulty": "normal"
+    "difficulty": "normal",
+    "source_no": 242
   },
   {
     "id": 325,
@@ -389,7 +391,8 @@
     "question": "傷病手当金は、被保険者が療養のために労務に服することができないときに支給されるが、この「療養」は保険医療機関での受療に限られる。",
     "answer": false,
     "explanation": "自費診療等も含めた療養であれば足り、保険医療機関での受療に限定されない（法99条1項・昭22.6.10保険発59号）。",
-    "difficulty": "normal"
+    "difficulty": "normal",
+    "source_no": 279
   },
   {
     "id": 350,
@@ -405,7 +408,8 @@
     "question": "傷病手当金の支給期間中に被保険者が死亡した場合、その死亡日に係る傷病手当金は支給されない。",
     "answer": false,
     "explanation": "傷病手当金は死亡日も支給対象となる（法36条・昭29.9.1保発第1号）。",
-    "difficulty": "normal"
+    "difficulty": "normal",
+    "source_no": 280
   },
   {
     "id": 352,
@@ -413,7 +417,8 @@
     "question": "被保険者の資格を取得する前に初診日がある疾病を原因として、資格取得後に労務不能となった場合、傷病手当金は支給されない。",
     "answer": true,
     "explanation": "資格取得前の傷病を原因とする場合は傷病手当金の支給対象とならない（昭26.5.1令文第1346号・昭26.10.16保発411号）。",
-    "difficulty": "normal"
+    "difficulty": "normal",
+    "source_no": 281
   },
   {
     "id": 353,

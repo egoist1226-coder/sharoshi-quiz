@@ -85,7 +85,8 @@ function resetSubject(subjectKey) {
 // ===== 複数ファイル統合設定 =====
 // キー → 読み込むファイル配列。IDはfileIndex*10000+元IDで一意化する
 const MULTI_SUBJECT_FILES = {
-  kenkou_hoken: ['kenkou_hoken_01', 'kenkou_hoken_02', 'kenkou_hoken_03', 'kenkou_hoken_04'],
+  kenkou_hoken:  ['kenkou_hoken_01', 'kenkou_hoken_02', 'kenkou_hoken_03', 'kenkou_hoken_04'],
+  kousei_nenkin: ['kousei_nenkin_01'],
 };
 
 // ===== 問題データ読み込み =====

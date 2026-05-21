@@ -82,11 +82,31 @@ function resetSubject(subjectKey) {
   saveStorage(all);
 }
 
+// 現在の問題セットに存在しないIDの記録を削除（問題セット更新時の不整合を防ぐ）
+function cleanStaleIds(subjectKey, validIds) {
+  const all = loadStorage();
+  if (!all[subjectKey]) return;
+  const qs = all[subjectKey].questions;
+  const validSet = new Set(validIds.map(String));
+  let cleaned = false;
+  for (const id of Object.keys(qs)) {
+    if (!validSet.has(id)) {
+      delete qs[id];
+      cleaned = true;
+    }
+  }
+  if (cleaned) saveStorage(all);
+}
+
 // ===== 複数ファイル統合設定 =====
 // キー → 読み込むファイル配列。IDはfileIndex*10000+元IDで一意化する
 const MULTI_SUBJECT_FILES = {
-  kenkou_hoken:  ['kenkou_hoken_01', 'kenkou_hoken_02', 'kenkou_hoken_03', 'kenkou_hoken_04'],
-  kousei_nenkin: ['kousei_nenkin_01'],
+  kenkou_hoken: ['kenkou_hoken_01', 'kenkou_hoken_02', 'kenkou_hoken_03', 'kenkou_hoken_04'],
+};
+
+// ファイル名が異なる科目の単純リダイレクト（IDは変換しない）
+const SUBJECT_FILE_ALIAS = {
+  kousei_nenkin: 'kousei_nenkin_01',
 };
 
 // ===== 問題データ読み込み =====
@@ -104,7 +124,8 @@ async function loadQuestions(subjectFile) {
     });
     return combined;
   }
-  const res = await fetch(`data/${subjectFile}.json`);
+  const alias = SUBJECT_FILE_ALIAS[subjectFile] || subjectFile;
+  const res = await fetch(`data/${alias}.json`);
   return res.json();
 }
 
@@ -133,6 +154,8 @@ class QuizController {
     this.subjectKey = subjectKey;
     this.mode = mode;
     this.allQuestions = questions;
+    // 問題セット変更時に古いIDの記録を自動削除
+    cleanStaleIds(subjectKey, questions.map(q => q.id));
     this.questions = this._selectQuestions(questions, mode, subjectKey);
     this.current = 0;
     this.correctCount = 0;

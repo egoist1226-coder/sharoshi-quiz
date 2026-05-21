@@ -95,129 +95,33 @@
     </div>
   </div>
 
-  <!-- 健康保険法①カード -->
+  <!-- 健康保険法カード（①〜④統合） -->
   <div class="subject-card">
     <div class="subject-card-header">
       <div style="display:flex; justify-content:space-between; align-items:start">
         <div>
-          <div class="subject-card-title">健康保険法①</div>
-          <div class="subject-card-meta">全150問（問1〜150）・ 社会保険</div>
+          <div class="subject-card-title">健康保険法</div>
+          <div class="subject-card-meta">全565問（①〜④からランダム30問）・ 社会保険</div>
         </div>
-        <button class="reset-btn" onclick="handleReset('kenkou_hoken_01', this)">リセット</button>
+        <button class="reset-btn" onclick="handleReset('kenkou_hoken', this)">リセット</button>
       </div>
     </div>
     <div class="subject-card-stats">
       <div class="stat-item">
-        <div class="stat-value" id="kenkou01-attempts">—</div>
+        <div class="stat-value" id="kenkou-attempts">—</div>
         <div class="stat-label">累計回答</div>
       </div>
       <div class="stat-item">
-        <div class="stat-value" id="kenkou01-accuracy">—</div>
+        <div class="stat-value" id="kenkou-accuracy">—</div>
         <div class="stat-label">正解率</div>
       </div>
       <div class="stat-item">
-        <div class="stat-value" style="color:var(--danger)" id="kenkou01-weak">—</div>
+        <div class="stat-value" style="color:var(--danger)" id="kenkou-weak">—</div>
         <div class="stat-label">苦手問題</div>
       </div>
     </div>
     <div class="subject-card-actions">
-      <button class="btn btn-primary" onclick="openModal('kenkou_hoken_01')">
-        <span class="btn-icon">▶</span> 演習開始
-      </button>
-    </div>
-  </div>
-
-  <!-- 健康保険法②カード -->
-  <div class="subject-card">
-    <div class="subject-card-header">
-      <div style="display:flex; justify-content:space-between; align-items:start">
-        <div>
-          <div class="subject-card-title">健康保険法②</div>
-          <div class="subject-card-meta">全150問（問151〜300）・ 社会保険</div>
-        </div>
-        <button class="reset-btn" onclick="handleReset('kenkou_hoken_02', this)">リセット</button>
-      </div>
-    </div>
-    <div class="subject-card-stats">
-      <div class="stat-item">
-        <div class="stat-value" id="kenkou02-attempts">—</div>
-        <div class="stat-label">累計回答</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-value" id="kenkou02-accuracy">—</div>
-        <div class="stat-label">正解率</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-value" style="color:var(--danger)" id="kenkou02-weak">—</div>
-        <div class="stat-label">苦手問題</div>
-      </div>
-    </div>
-    <div class="subject-card-actions">
-      <button class="btn btn-primary" onclick="openModal('kenkou_hoken_02')">
-        <span class="btn-icon">▶</span> 演習開始
-      </button>
-    </div>
-  </div>
-
-  <!-- 健康保険法③カード -->
-  <div class="subject-card">
-    <div class="subject-card-header">
-      <div style="display:flex; justify-content:space-between; align-items:start">
-        <div>
-          <div class="subject-card-title">健康保険法③</div>
-          <div class="subject-card-meta">全168問（問301〜468）・ 社会保険</div>
-        </div>
-        <button class="reset-btn" onclick="handleReset('kenkou_hoken_03', this)">リセット</button>
-      </div>
-    </div>
-    <div class="subject-card-stats">
-      <div class="stat-item">
-        <div class="stat-value" id="kenkou03-attempts">—</div>
-        <div class="stat-label">累計回答</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-value" id="kenkou03-accuracy">—</div>
-        <div class="stat-label">正解率</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-value" style="color:var(--danger)" id="kenkou03-weak">—</div>
-        <div class="stat-label">苦手問題</div>
-      </div>
-    </div>
-    <div class="subject-card-actions">
-      <button class="btn btn-primary" onclick="openModal('kenkou_hoken_03')">
-        <span class="btn-icon">▶</span> 演習開始
-      </button>
-    </div>
-  </div>
-
-  <!-- 健康保険法④カード -->
-  <div class="subject-card">
-    <div class="subject-card-header">
-      <div style="display:flex; justify-content:space-between; align-items:start">
-        <div>
-          <div class="subject-card-title">健康保険法④</div>
-          <div class="subject-card-meta">全97問（問469〜500他）・ 社会保険</div>
-        </div>
-        <button class="reset-btn" onclick="handleReset('kenkou_hoken_04', this)">リセット</button>
-      </div>
-    </div>
-    <div class="subject-card-stats">
-      <div class="stat-item">
-        <div class="stat-value" id="kenkou04-attempts">—</div>
-        <div class="stat-label">累計回答</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-value" id="kenkou04-accuracy">—</div>
-        <div class="stat-label">正解率</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-value" style="color:var(--danger)" id="kenkou04-weak">—</div>
-        <div class="stat-label">苦手問題</div>
-      </div>
-    </div>
-    <div class="subject-card-actions">
-      <button class="btn btn-primary" onclick="openModal('kenkou_hoken_04')">
+      <button class="btn btn-primary" onclick="openModal('kenkou_hoken')">
         <span class="btn-icon">▶</span> 演習開始
       </button>
     </div>
@@ -282,7 +186,7 @@
         <div class="mode-icon">📋</div>
         <div class="mode-info">
           <div class="mode-name">全問演習</div>
-          <div class="mode-desc">100問からランダムに30問を出題</div>
+          <div class="mode-desc" id="modal-all-desc">全問からランダムに30問を出題</div>
         </div>
       </div>
       <div class="mode-option" id="mode-weak" onclick="selectMode('weak')">
@@ -304,12 +208,9 @@
 <script src="js/quiz.js"></script>
 <script>
   const SUBJECTS = [
-    { key: 'kokumin_kenko_hoken', file: 'kokumin_kenko_hoken', prefix: 'kokumin'  },
-    { key: 'kenkou_hoken_01',     file: 'kenkou_hoken_01',     prefix: 'kenkou01' },
-    { key: 'kenkou_hoken_02',     file: 'kenkou_hoken_02',     prefix: 'kenkou02' },
-    { key: 'kenkou_hoken_03',     file: 'kenkou_hoken_03',     prefix: 'kenkou03' },
-    { key: 'kenkou_hoken_04',     file: 'kenkou_hoken_04',     prefix: 'kenkou04' },
-    { key: 'kousei_nenkin',       file: 'kousei_nenkin',       prefix: 'nenkin'   },
+    { key: 'kokumin_kenko_hoken', file: 'kokumin_kenko_hoken', prefix: 'kokumin' },
+    { key: 'kenkou_hoken',        file: 'kenkou_hoken',        prefix: 'kenkou'  },
+    { key: 'kousei_nenkin',       file: 'kousei_nenkin',       prefix: 'nenkin'  },
   ];
 
   let selectedMode = 'all';
@@ -317,8 +218,7 @@
 
   async function init() {
     for (const s of SUBJECTS) {
-      const questions = await QuizAPI.loadQuestions(s.file);
-      const stats = QuizAPI.getStats(s.key, questions.length);
+      const stats = QuizAPI.getStats(s.key);
       const attempts = stats.totalAttempts;
       const accuracy = attempts > 0
         ? Math.round((stats.totalCorrect / attempts) * 100) + '%'
@@ -329,11 +229,20 @@
     }
   }
 
+  const ALL_MODE_DESC = {
+    kokumin_kenko_hoken: '全100問からランダムに30問を出題',
+    kenkou_hoken:        '全565問（①〜④）からランダムに30問を出題',
+    kousei_nenkin:       '全30問を出題',
+  };
+
   function openModal(subject) {
     currentSubject = subject;
     selectedMode = 'all';
     document.getElementById('mode-all').classList.add('selected');
     document.getElementById('mode-weak').classList.remove('selected');
+
+    document.getElementById('modal-all-desc').textContent =
+      ALL_MODE_DESC[subject] || '全問からランダムに30問を出題';
 
     const weakIds = QuizAPI.getWeakQuestionIds(subject);
     const weakDesc = weakIds.length > 0

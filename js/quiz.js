@@ -49,17 +49,15 @@ function recordAnswer(subjectKey, questionId, isCorrect) {
   return { wasJustMastered };
 }
 
-function getStats(subjectKey, totalQuestions) {
+function getStats(subjectKey) {
   const data = getSubjectData(subjectKey);
   const q = data.questions;
   let totalAttempts = 0, totalCorrect = 0, weakCount = 0;
-  for (let id = 1; id <= totalQuestions; id++) {
-    if (q[id]) {
-      totalAttempts += q[id].attempts;
-      totalCorrect += q[id].correct;
-      // mastered（3連続正解済み）は苦手カウントから除外
-      if (q[id].wrong > 0 && !q[id].mastered) weakCount++;
-    }
+  for (const id in q) {
+    totalAttempts += q[id].attempts;
+    totalCorrect += q[id].correct;
+    // mastered（3連続正解済み）は苦手カウントから除外
+    if (q[id].wrong > 0 && !q[id].mastered) weakCount++;
   }
   return { totalAttempts, totalCorrect, weakCount };
 }
@@ -84,8 +82,27 @@ function resetSubject(subjectKey) {
   saveStorage(all);
 }
 
+// ===== 複数ファイル統合設定 =====
+// キー → 読み込むファイル配列。IDはfileIndex*10000+元IDで一意化する
+const MULTI_SUBJECT_FILES = {
+  kenkou_hoken: ['kenkou_hoken_01', 'kenkou_hoken_02', 'kenkou_hoken_03', 'kenkou_hoken_04'],
+};
+
 // ===== 問題データ読み込み =====
 async function loadQuestions(subjectFile) {
+  if (MULTI_SUBJECT_FILES[subjectFile]) {
+    const files = MULTI_SUBJECT_FILES[subjectFile];
+    const results = await Promise.all(
+      files.map(f => fetch(`data/${f}.json`).then(r => r.json()))
+    );
+    const combined = [];
+    results.forEach((qs, fileIdx) => {
+      qs.forEach(q => {
+        combined.push({ ...q, id: (fileIdx + 1) * 10000 + q.id });
+      });
+    });
+    return combined;
+  }
   const res = await fetch(`data/${subjectFile}.json`);
   return res.json();
 }

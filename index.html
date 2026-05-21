@@ -191,6 +191,38 @@
     </div>
   </div>
 
+  <!-- 健康保険法④カード -->
+  <div class="subject-card">
+    <div class="subject-card-header">
+      <div style="display:flex; justify-content:space-between; align-items:start">
+        <div>
+          <div class="subject-card-title">健康保険法④</div>
+          <div class="subject-card-meta">全97問（問469〜500他）・ 社会保険</div>
+        </div>
+        <button class="reset-btn" onclick="handleReset('kenkou_hoken_04', this)">リセット</button>
+      </div>
+    </div>
+    <div class="subject-card-stats">
+      <div class="stat-item">
+        <div class="stat-value" id="kenkou04-attempts">—</div>
+        <div class="stat-label">累計回答</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="kenkou04-accuracy">—</div>
+        <div class="stat-label">正解率</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" style="color:var(--danger)" id="kenkou04-weak">—</div>
+        <div class="stat-label">苦手問題</div>
+      </div>
+    </div>
+    <div class="subject-card-actions">
+      <button class="btn btn-primary" onclick="openModal('kenkou_hoken_04')">
+        <span class="btn-icon">▶</span> 演習開始
+      </button>
+    </div>
+  </div>
+
   <!-- 厚生年金保険法カード -->
   <div class="subject-card">
     <div class="subject-card-header">
@@ -276,6 +308,7 @@
     { key: 'kenkou_hoken_01',     file: 'kenkou_hoken_01',     prefix: 'kenkou01' },
     { key: 'kenkou_hoken_02',     file: 'kenkou_hoken_02',     prefix: 'kenkou02' },
     { key: 'kenkou_hoken_03',     file: 'kenkou_hoken_03',     prefix: 'kenkou03' },
+    { key: 'kenkou_hoken_04',     file: 'kenkou_hoken_04',     prefix: 'kenkou04' },
     { key: 'kousei_nenkin',       file: 'kousei_nenkin',       prefix: 'nenkin'   },
   ];
 

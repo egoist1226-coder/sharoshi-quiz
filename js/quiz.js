@@ -99,27 +99,31 @@ function cleanStaleIds(subjectKey, validIds) {
 }
 
 // ===== 複数ファイル統合設定 =====
-// キー → 読み込むファイル配列。IDはfileIndex*10000+元IDで一意化する
+// 配列形式: IDを (fileIdx+1)*10000+元ID で一意化する（kenkou_hoken等）
+// オブジェクト形式 { files, noIdTransform:true }: IDをそのまま使う（kousei_nenkin等）
 const MULTI_SUBJECT_FILES = {
   kenkou_hoken: ['kenkou_hoken_01', 'kenkou_hoken_02', 'kenkou_hoken_03', 'kenkou_hoken_04'],
+  kousei_nenkin: { files: ['kousei_nenkin_01', 'kousei_nenkin_02'], noIdTransform: true },
 };
 
 // ファイル名が異なる科目の単純リダイレクト（IDは変換しない）
-const SUBJECT_FILE_ALIAS = {
-  kousei_nenkin: 'kousei_nenkin_01',
-};
+const SUBJECT_FILE_ALIAS = {};
 
 // ===== 問題データ読み込み =====
 async function loadQuestions(subjectFile) {
   if (MULTI_SUBJECT_FILES[subjectFile]) {
-    const files = MULTI_SUBJECT_FILES[subjectFile];
+    const config = MULTI_SUBJECT_FILES[subjectFile];
+    const files = Array.isArray(config) ? config : config.files;
+    const noIdTransform = !Array.isArray(config) && !!config.noIdTransform;
     const results = await Promise.all(
       files.map(f => fetch(`data/${f}.json`).then(r => r.json()))
     );
     const combined = [];
     results.forEach((qs, fileIdx) => {
       qs.forEach(q => {
-        combined.push({ ...q, id: (fileIdx + 1) * 10000 + q.id });
+        combined.push(noIdTransform
+          ? { ...q }
+          : { ...q, id: (fileIdx + 1) * 10000 + q.id });
       });
     });
     return combined;

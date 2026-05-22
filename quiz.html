@@ -296,7 +296,8 @@
 
     const accuracy = quiz.accuracy;
     let emoji = '😢', title = 'もう少し頑張ろう！';
-    if (accuracy >= 90) { emoji = '🏆'; title = '素晴らしい！完璧に近い！'; }
+    if (accuracy === 100) { emoji = '🏆'; title = '全問正解、パーフェクトです！'; }
+    else if (accuracy >= 90) { emoji = '🏆'; title = '素晴らしい！完璧に近い！'; }
     else if (accuracy >= 70) { emoji = '🎉'; title = 'よくできました！'; }
     else if (accuracy >= 50) { emoji = '💪'; title = 'もう少しで合格ライン！'; }
 

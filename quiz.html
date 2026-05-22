@@ -250,7 +250,7 @@
       masteredEl.classList.add('hidden');
     }
 
-    document.getElementById('exp-text').textContent = q.explanation;
+    document.getElementById('exp-text').innerHTML = q.explanation;
 
     // 問題集番号（source_no フィールドがある場合に表示）
     const srcEl = document.getElementById('source-no-text');

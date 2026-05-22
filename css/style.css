@@ -320,6 +320,12 @@ body {
   line-height: 1.75;
   color: var(--gray-700);
 }
+/* ×問題の引っかけ箇所：赤アンダーライン */
+.wrong-key {
+  color: var(--danger);
+  text-decoration: underline;
+  font-weight: 700;
+}
 .correct-answer-note {
   font-size: 13px;
   font-weight: 600;

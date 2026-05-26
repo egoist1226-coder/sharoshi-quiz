@@ -62,27 +62,29 @@
           ✨ 3回連続正解！苦手リストから除外されました
         </div>
         <div id="exp-text"></div>
-        <!-- 正解時のみ表示: 手動で苦手リストに追加するボタン -->
-        <button id="manual-weak-btn" class="manual-weak-btn hidden" onclick="handleManualWeak()">
-          📌 苦手に追加
-        </button>
         <div id="source-no-text" class="hidden" style="margin-top:10px;font-size:12px;color:var(--gray-500);text-align:right;"></div>
 
-        <!-- 改定候補エリア（区切り線で独立配置） -->
-        <div class="review-candidate-area" id="review-candidate-area">
-          <div id="review-btn-wrap">
-            <button class="review-candidate-btn" id="review-candidate-btn" onclick="showReviewForm()">
-              📋 改定候補に追加
-            </button>
-          </div>
-          <div id="review-form-wrap" class="hidden">
-            <input type="text" id="review-note" placeholder="改定メモ（任意）" class="review-note-input" maxlength="100">
-            <div class="review-form-actions">
-              <button class="btn-review-cancel" onclick="cancelReview()">キャンセル</button>
-              <button class="btn-review-submit" onclick="submitReview()">登録する</button>
+        <!-- アクションボタン行：左=改定候補、右=苦手に追加 -->
+        <div class="action-btn-row">
+          <div>
+            <div id="review-btn-wrap">
+              <button class="review-candidate-btn" id="review-candidate-btn" onclick="showReviewForm()">
+                📋 改定候補に追加
+              </button>
             </div>
+            <div id="review-done-msg" class="hidden review-done-msg">✔ 登録済み</div>
           </div>
-          <div id="review-done-msg" class="hidden review-done-msg">✔ 改定候補に登録しました</div>
+          <button id="manual-weak-btn" class="manual-weak-btn hidden" onclick="handleManualWeak()">
+            📌 苦手に追加
+          </button>
+        </div>
+        <!-- 改定フォーム（ボタン押下後に展開） -->
+        <div id="review-form-wrap" class="hidden">
+          <input type="text" id="review-note" placeholder="改定メモ（任意）" class="review-note-input" maxlength="100">
+          <div class="review-form-actions">
+            <button class="btn-review-cancel" onclick="cancelReview()">キャンセル</button>
+            <button class="btn-review-submit" onclick="submitReview()">登録する</button>
+          </div>
         </div>
       </div>
     </div>
@@ -348,7 +350,8 @@
       masteredEl.classList.add('hidden');
     }
 
-    document.getElementById('exp-text').innerHTML = q.explanation;
+    const cleanExp = (q.explanation || '').replace(/（問題集[　\s]*問\d+）\s*$/, '').trim();
+    document.getElementById('exp-text').innerHTML = cleanExp;
 
     // 手動苦手ボタン: 正解時のみ表示（すでに苦手登録済みなら「追加済み」状態で表示）
     const manualBtn = document.getElementById('manual-weak-btn');

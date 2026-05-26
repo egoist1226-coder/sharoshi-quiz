@@ -574,11 +574,15 @@ body {
 .sync-modal-msg.success { background: var(--success-bg); color: var(--success); }
 .sync-modal-msg.error   { background: var(--danger-bg);  color: var(--danger); }
 
-/* ===== 改定候補ボタン（quiz.html）===== */
-.review-candidate-area {
+/* ===== アクションボタン行（改定候補＋苦手追加）===== */
+.action-btn-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-top: 14px;
   padding-top: 10px;
   border-top: 1px dashed var(--gray-300);
+  gap: 8px;
 }
 .review-candidate-btn {
   font-size: 11px;
@@ -691,8 +695,8 @@ body {
 
 /* ===== 手動苦手登録ボタン（quiz.html）===== */
 .manual-weak-btn {
-  display: block;
-  margin: 12px 0 0 auto;
+  display: inline-block;
+  flex-shrink: 0;
   padding: 4px 12px;
   background: none;
   border: 1px solid var(--gray-300);

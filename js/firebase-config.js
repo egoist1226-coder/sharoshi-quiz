@@ -14,10 +14,10 @@
 // 7. このファイルを保存し、git add / commit / push でデプロイ完了！
 
 const FIREBASE_CONFIG = {
-  apiKey:            "YOUR_API_KEY",
-  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId:         "YOUR_PROJECT_ID",
-  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId:             "YOUR_APP_ID"
+  apiKey:            "AIzaSyAHgNSXkVQvTad2woFhmtSwH-Kb-b8BBbM",
+  authDomain:        "sharoushi-quiz.firebaseapp.com",
+  projectId:         "sharoushi-quiz",
+  storageBucket:     "sharoushi-quiz.firebasestorage.app",
+  messagingSenderId: "102375174301",
+  appId:             "1:102375174301:web:33da576d6579dff0bde474"
 };

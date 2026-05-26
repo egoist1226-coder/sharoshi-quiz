@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <title>社労士 問題演習</title>
   <link rel="stylesheet" href="css/style.css">
+  <!-- Firebase SDK（同期機能） -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <style>
     .app-logo {
       font-size: 28px;
@@ -159,6 +162,29 @@
     </div>
   </div>
 
+  <!-- 同期設定カード -->
+  <div class="section-title">クロスデバイス同期</div>
+  <div class="sync-card">
+    <div class="sync-row" id="sync-not-set">
+      <span class="sync-icon">🔗</span>
+      <div class="sync-info">
+        <div class="sync-not-set-label">同期コード未設定</div>
+        <div class="sync-not-set-sub">iPhoneとPixelで成績・苦手問題を共有できます</div>
+      </div>
+      <button class="btn-link" onclick="openSyncModal()">設定 ›</button>
+    </div>
+    <div class="sync-row hidden" id="sync-is-set">
+      <span class="sync-icon">🔗</span>
+      <div class="sync-info">
+        <div class="sync-label">同期コード</div>
+        <span class="sync-code-value" id="sync-code-display">— —</span>
+        <button class="sync-copy-btn" onclick="copySyncCode()">コピー</button>
+        <div class="sync-status-text"><span class="sync-status-dot"></span>同期中</div>
+      </div>
+      <button class="btn-link" onclick="openSyncModal()">変更 ›</button>
+    </div>
+  </div>
+
   <div class="section-title">追加予定の科目</div>
 
   <div class="coming-soon-card">
@@ -205,7 +231,29 @@
   </div>
 </div>
 
+<!-- 同期設定モーダル -->
+<div class="modal-overlay" id="sync-modal" onclick="closeSyncModalOutside(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">🔗 クロスデバイス同期</div>
+    <div class="modal-subtitle">同じ同期コードを複数のデバイスで設定すると、成績・苦手問題が自動で共有されます。</div>
+    <button class="btn btn-primary" style="width:100%; margin-bottom:16px;" onclick="createNewCode()">
+      ✨ 新しいコードを作成
+    </button>
+    <div class="sync-or">または既存のコードを入力</div>
+    <div class="sync-input-row">
+      <input id="sync-input" type="text" maxlength="8" placeholder="コード8文字"
+             class="sync-input" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+      <button class="btn btn-secondary" style="flex:none; padding:10px 16px;" onclick="useExistingCode()">同期</button>
+    </div>
+    <div id="sync-modal-msg" class="sync-modal-msg hidden"></div>
+    <button class="btn btn-gray" style="width:100%; margin-top:16px;" onclick="closeSyncModal()">閉じる</button>
+  </div>
+</div>
+
 <script src="js/quiz.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/sync.js"></script>
 <script>
   const SUBJECTS = [
     { key: 'kokumin_kenko_hoken', file: 'kokumin_kenko_hoken', prefix: 'kokumin' },
@@ -217,6 +265,11 @@
   let currentSubject = '';
 
   async function init() {
+    // 同期コードが設定されていればリモートから最新データを取得
+    if (window.SyncAPI?.isEnabled()) {
+      await SyncAPI.syncOnStart();
+    }
+
     for (const s of SUBJECTS) {
       const stats = QuizAPI.getStats(s.key);
       const attempts = stats.totalAttempts;
@@ -227,6 +280,91 @@
       document.getElementById(`${s.prefix}-accuracy`).textContent = accuracy;
       document.getElementById(`${s.prefix}-weak`).textContent = stats.weakCount || '—';
     }
+
+    renderSyncStatus();
+  }
+
+  // 同期カードの表示を更新
+  function renderSyncStatus() {
+    if (!window.SyncAPI?.isConfigured()) {
+      // Firebase未設定 → 同期カード非表示
+      document.querySelector('.sync-card').style.display = 'none';
+      document.querySelectorAll('.section-title').forEach(el => {
+        if (el.textContent.trim() === 'クロスデバイス同期') el.style.display = 'none';
+      });
+      return;
+    }
+    const code = SyncAPI.getSyncCode();
+    if (code) {
+      document.getElementById('sync-not-set').classList.add('hidden');
+      document.getElementById('sync-is-set').classList.remove('hidden');
+      document.getElementById('sync-code-display').textContent = SyncAPI.formatCode(code);
+    } else {
+      document.getElementById('sync-not-set').classList.remove('hidden');
+      document.getElementById('sync-is-set').classList.add('hidden');
+    }
+  }
+
+  // ===== 同期モーダル =====
+  function openSyncModal() {
+    document.getElementById('sync-input').value = '';
+    showSyncMsg('', '');
+    document.getElementById('sync-modal').classList.add('show');
+  }
+  function closeSyncModal() {
+    document.getElementById('sync-modal').classList.remove('show');
+  }
+  function closeSyncModalOutside(e) {
+    if (e.target === document.getElementById('sync-modal')) closeSyncModal();
+  }
+  function showSyncMsg(text, type) {
+    const el = document.getElementById('sync-modal-msg');
+    el.textContent = text;
+    el.className = 'sync-modal-msg' + (type ? ' ' + type : '');
+    if (text) el.classList.remove('hidden');
+    else el.classList.add('hidden');
+  }
+
+  async function createNewCode() {
+    const code = SyncAPI.generateCode();
+    SyncAPI.setSyncCode(code);
+    showSyncMsg('📡 データを同期中…', '');
+    await SyncAPI.pushCurrentData();
+    showSyncMsg(`✅ コード「${SyncAPI.formatCode(code)}」を作成しました。他のデバイスでこのコードを入力してください。`, 'success');
+    renderSyncStatus();
+  }
+
+  async function useExistingCode() {
+    const raw = document.getElementById('sync-input').value.trim().toUpperCase();
+    if (raw.length !== 8) {
+      showSyncMsg('❌ コードは8文字で入力してください', 'error');
+      return;
+    }
+    SyncAPI.setSyncCode(raw);
+    showSyncMsg('📡 リモートデータを取得中…', '');
+    const result = await SyncAPI.pull();
+    if (result) {
+      localStorage.setItem('sharoshi_quiz_v1', JSON.stringify(result.data));
+      localStorage.setItem('sharoshi_sync_local_time', String(result.remoteTime));
+      showSyncMsg(`✅ 同期コード「${SyncAPI.formatCode(raw)}」で同期しました。`, 'success');
+      renderSyncStatus();
+      await init(); // 成績を再描画
+    } else {
+      // リモートにデータなし → 現在のデータをアップロード
+      await SyncAPI.pushCurrentData();
+      showSyncMsg(`✅ コード「${SyncAPI.formatCode(raw)}」を設定しました（新規登録）。`, 'success');
+      renderSyncStatus();
+    }
+  }
+
+  function copySyncCode() {
+    const code = SyncAPI.getSyncCode();
+    if (!code) return;
+    navigator.clipboard?.writeText(SyncAPI.formatCode(code)).then(() => {
+      const btn = document.querySelector('.sync-copy-btn');
+      btn.textContent = 'コピー済 ✓';
+      setTimeout(() => btn.textContent = 'コピー', 1500);
+    });
   }
 
   const ALL_MODE_DESC = {

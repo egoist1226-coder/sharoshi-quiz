@@ -35,8 +35,8 @@ function recordAnswer(subjectKey, questionId, isCorrect) {
   if (isCorrect) {
     q.correct++;
     q.consecutiveCorrect = (q.consecutiveCorrect || 0) + 1;
-    // 苦手問題に登録済みで3連続正解 → 苦手リストから除外
-    if (!q.mastered && q.wrong > 0 && q.consecutiveCorrect >= 3) {
+    // 苦手問題に登録済みで3連続正解 → 苦手リストから除外（手動登録も対象）
+    if (!q.mastered && (q.wrong > 0 || q.manualWeak) && q.consecutiveCorrect >= 3) {
       q.mastered = true;
       wasJustMastered = true;
     }
@@ -49,6 +49,18 @@ function recordAnswer(subjectKey, questionId, isCorrect) {
   return { wasJustMastered };
 }
 
+// 正解した問題を手動で苦手リストに追加する
+function addManualWeak(subjectKey, questionId) {
+  const all = loadStorage();
+  if (!all[subjectKey]) all[subjectKey] = { questions: {} };
+  const qs = all[subjectKey].questions;
+  if (!qs[questionId]) qs[questionId] = { attempts: 0, correct: 0, wrong: 0, consecutiveCorrect: 0 };
+  qs[questionId].manualWeak = true;
+  qs[questionId].mastered = false;
+  qs[questionId].consecutiveCorrect = 0;
+  saveStorage(all);
+}
+
 function getStats(subjectKey) {
   const data = getSubjectData(subjectKey);
   const q = data.questions;
@@ -56,8 +68,8 @@ function getStats(subjectKey) {
   for (const id in q) {
     totalAttempts += q[id].attempts;
     totalCorrect += q[id].correct;
-    // mastered（3連続正解済み）は苦手カウントから除外
-    if (q[id].wrong > 0 && !q[id].mastered) weakCount++;
+    // mastered（3連続正解済み）は苦手カウントから除外。手動登録も含む
+    if ((q[id].wrong > 0 || q[id].manualWeak) && !q[id].mastered) weakCount++;
   }
   return { totalAttempts, totalCorrect, weakCount };
 }
@@ -65,7 +77,7 @@ function getStats(subjectKey) {
 function getWeakQuestionIds(subjectKey) {
   const data = getSubjectData(subjectKey);
   return Object.entries(data.questions)
-    .filter(([, v]) => v.wrong > 0 && !v.mastered)
+    .filter(([, v]) => (v.wrong > 0 || v.manualWeak) && !v.mastered)
     .map(([id]) => parseInt(id));
 }
 
@@ -214,6 +226,8 @@ window.QuizAPI = {
   getStats,
   getWeakQuestionIds,
   getQuestionConsecutive,
+  addManualWeak,
   resetSubject,
   getParams,
+  loadStorage,
 };

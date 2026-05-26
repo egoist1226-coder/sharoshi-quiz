@@ -453,3 +453,148 @@ body {
 
 /* hidden */
 .hidden { display: none !important; }
+
+/* ===== 同期カード（index.html）===== */
+.sync-card {
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.sync-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sync-icon { font-size: 22px; flex-shrink: 0; }
+.sync-info { flex: 1; min-width: 0; }
+.sync-label {
+  font-size: 12px;
+  color: var(--gray-500);
+  margin-bottom: 2px;
+}
+.sync-code-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--gray-900);
+  letter-spacing: 0.05em;
+  font-family: monospace;
+}
+.sync-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.sync-status-text {
+  font-size: 11px;
+  color: var(--success);
+  font-weight: 600;
+  margin-top: 2px;
+}
+.sync-not-set-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-700);
+}
+.sync-not-set-sub {
+  font-size: 12px;
+  color: var(--gray-500);
+  margin-top: 2px;
+}
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px;
+  flex-shrink: 0;
+}
+.sync-copy-btn {
+  background: var(--gray-200);
+  border: none;
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--gray-700);
+  padding: 3px 8px;
+  cursor: pointer;
+  margin-left: 8px;
+  font-weight: 600;
+}
+
+/* 同期モーダル内 */
+.sync-or {
+  text-align: center;
+  font-size: 12px;
+  color: var(--gray-500);
+  margin: 14px 0;
+  position: relative;
+}
+.sync-or::before, .sync-or::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 42%;
+  height: 1px;
+  background: var(--gray-300);
+}
+.sync-or::before { left: 0; }
+.sync-or::after  { right: 0; }
+.sync-input-row {
+  display: flex;
+  gap: 8px;
+}
+.sync-input {
+  flex: 1;
+  border: 1.5px solid var(--gray-300);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-family: monospace;
+  color: var(--gray-900);
+  outline: none;
+}
+.sync-input:focus { border-color: var(--primary); }
+.sync-modal-msg {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.sync-modal-msg.success { background: var(--success-bg); color: var(--success); }
+.sync-modal-msg.error   { background: var(--danger-bg);  color: var(--danger); }
+
+/* ===== 手動苦手登録ボタン（quiz.html）===== */
+.manual-weak-btn {
+  display: block;
+  margin: 12px 0 0 auto;
+  padding: 4px 12px;
+  background: none;
+  border: 1px solid var(--gray-300);
+  border-radius: 20px;
+  font-size: 11px;
+  color: var(--gray-500);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.manual-weak-btn:active {
+  transform: scale(0.96);
+}
+.manual-weak-btn.added {
+  color: var(--warn);
+  border-color: var(--warn);
+  background: var(--warn-bg);
+  cursor: default;
+}

@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <title>問題演習 - 社労士</title>
   <link rel="stylesheet" href="css/style.css">
+  <!-- Firebase SDK（同期機能） -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -59,6 +62,10 @@
           ✨ 3回連続正解！苦手リストから除外されました
         </div>
         <div id="exp-text"></div>
+        <!-- 正解時のみ表示: 手動で苦手リストに追加するボタン -->
+        <button id="manual-weak-btn" class="manual-weak-btn hidden" onclick="handleManualWeak()">
+          📌 苦手に追加
+        </button>
         <div id="source-no-text" class="hidden" style="margin-top:10px;font-size:12px;color:var(--gray-500);text-align:right;"></div>
       </div>
     </div>
@@ -128,6 +135,8 @@
 </div>
 
 <script src="js/quiz.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/sync.js"></script>
 <script>
   const SUBJECT_NAMES = {
     kokumin_kenko_hoken: '国民健康保険法',
@@ -222,6 +231,27 @@
     document.getElementById('btn-batsu').disabled = true;
 
     showExplanation(isCorrect, quiz.currentQ, wasJustMastered);
+
+    // 回答後に同期プッシュ（fire-and-forget）
+    if (window.SyncAPI?.isEnabled()) {
+      const data = QuizAPI.loadStorage();
+      SyncAPI.push(data);
+    }
+  }
+
+  // 手動苦手登録
+  function handleManualWeak() {
+    const { subject } = QuizAPI.getParams();
+    const q = quiz.currentQ;
+    QuizAPI.addManualWeak(subject, q.id);
+    const btn = document.getElementById('manual-weak-btn');
+    btn.textContent = '✔ 追加済み';
+    btn.classList.add('added');
+    btn.disabled = true;
+    // 同期プッシュ
+    if (window.SyncAPI?.isEnabled()) {
+      SyncAPI.push(QuizAPI.loadStorage());
+    }
   }
 
   function showExplanation(isCorrect, q, wasJustMastered = false) {
@@ -251,6 +281,21 @@
     }
 
     document.getElementById('exp-text').innerHTML = q.explanation;
+
+    // 手動苦手ボタン: 正解時のみ表示（すでに苦手登録済みなら「追加済み」状態で表示）
+    const manualBtn = document.getElementById('manual-weak-btn');
+    if (isCorrect) {
+      const { subject } = QuizAPI.getParams();
+      const storage = QuizAPI.loadStorage();
+      const qData = storage[subject]?.questions?.[q.id];
+      const alreadyWeak = qData?.manualWeak && !qData?.mastered;
+      manualBtn.textContent = alreadyWeak ? '✔ 追加済み' : '📌 苦手に追加';
+      manualBtn.className = 'manual-weak-btn' + (alreadyWeak ? ' added' : '');
+      manualBtn.disabled = !!alreadyWeak;
+      manualBtn.classList.remove('hidden');
+    } else {
+      manualBtn.classList.add('hidden');
+    }
 
     // 問題集番号（source_no フィールドがある場合に表示）
     const srcEl = document.getElementById('source-no-text');

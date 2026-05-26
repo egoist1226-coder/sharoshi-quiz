@@ -119,4 +119,100 @@ window.SyncAPI = {
       console.warn('[sync] pushCurrentData失敗:', e);
     }
   },
+
+  // ===== 改定候補キュー =====
+  _localQueueKey: 'sharoshi_review_queue_v1',
+
+  _localQueueGet() {
+    try { return JSON.parse(localStorage.getItem(this._localQueueKey) || '[]'); }
+    catch { return []; }
+  },
+  _localQueueSave(arr) {
+    localStorage.setItem(this._localQueueKey, JSON.stringify(arr));
+  },
+
+  // 改定候補を追加
+  async addToReviewQueue(subjectKey, questionId, questionText, note) {
+    const item = {
+      localId: `${Date.now()}_${questionId}`,
+      subjectKey,
+      questionId,
+      questionText,
+      note: note || '',
+      addedAt: Date.now(),
+      status: 'pending',
+    };
+    // localStorageに保存（オフライン対応）
+    const local = this._localQueueGet();
+    // 同じ問題の重複登録を防ぐ
+    const exists = local.some(q => q.questionId === questionId && q.subjectKey === subjectKey && q.status === 'pending');
+    if (!exists) {
+      local.unshift(item);
+      this._localQueueSave(local);
+    }
+    // Firebaseにも保存
+    if (!this.isEnabled()) return;
+    const db = _getDb();
+    if (!db) return;
+    try {
+      const code = this.getSyncCode();
+      await db.collection('review_queue').doc(code)
+        .collection('items').doc(item.localId).set({
+          ...item,
+          addedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+    } catch (e) {
+      console.warn('[sync] addToReviewQueue Firebase失敗:', e);
+    }
+  },
+
+  // 改定候補リストを取得（pending のみ）
+  async getReviewQueue() {
+    if (this.isEnabled()) {
+      const db = _getDb();
+      if (db) {
+        try {
+          const code = this.getSyncCode();
+          const snap = await db.collection('review_queue').doc(code)
+            .collection('items')
+            .where('status', '==', 'pending')
+            .get();
+          if (!snap.empty) {
+            return snap.docs.map(d => ({ firestoreId: d.id, ...d.data() }))
+              .sort((a, b) => (b.addedAt?.seconds || 0) - (a.addedAt?.seconds || 0));
+          }
+        } catch (e) {
+          console.warn('[sync] getReviewQueue Firebase失敗:', e);
+        }
+      }
+    }
+    // フォールバック: localStorage
+    return this._localQueueGet().filter(q => q.status === 'pending');
+  },
+
+  // 確認済みにする
+  async markReviewDone(localId) {
+    // localStorageを更新
+    const local = this._localQueueGet();
+    const updated = local.map(q => q.localId === localId ? { ...q, status: 'done' } : q);
+    this._localQueueSave(updated);
+    // Firebaseも更新
+    if (!this.isEnabled()) return;
+    const db = _getDb();
+    if (!db) return;
+    try {
+      const code = this.getSyncCode();
+      await db.collection('review_queue').doc(code)
+        .collection('items').doc(localId).update({ status: 'done' });
+    } catch (e) {
+      console.warn('[sync] markReviewDone Firebase失敗:', e);
+    }
+  },
+
+  // すでに改定候補に入っているか確認
+  isInReviewQueue(subjectKey, questionId) {
+    return this._localQueueGet().some(
+      q => q.questionId === questionId && q.subjectKey === subjectKey && q.status === 'pending'
+    );
+  },
 };

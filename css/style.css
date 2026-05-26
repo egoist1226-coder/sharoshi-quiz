@@ -574,6 +574,121 @@ body {
 .sync-modal-msg.success { background: var(--success-bg); color: var(--success); }
 .sync-modal-msg.error   { background: var(--danger-bg);  color: var(--danger); }
 
+/* ===== 改定候補ボタン（quiz.html）===== */
+.review-candidate-area {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--gray-300);
+}
+.review-candidate-btn {
+  font-size: 11px;
+  color: var(--gray-500);
+  background: none;
+  border: 1px solid var(--gray-300);
+  border-radius: 20px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-weight: 500;
+}
+.review-candidate-btn:active { transform: scale(0.96); background: var(--gray-200); }
+.review-note-input {
+  width: 100%;
+  border: 1.5px solid var(--gray-300);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  margin-top: 8px;
+  outline: none;
+  color: var(--gray-900);
+}
+.review-note-input:focus { border-color: var(--primary); }
+.review-form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  justify-content: flex-end;
+}
+.btn-review-cancel {
+  background: var(--gray-200);
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-700);
+  cursor: pointer;
+}
+.btn-review-submit {
+  background: var(--primary);
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+}
+.review-done-msg {
+  font-size: 11px;
+  color: var(--gray-500);
+  font-weight: 600;
+  padding: 2px 0;
+}
+
+/* ===== 改定候補リスト（index.html）===== */
+.review-item {
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  border-left: 3px solid var(--warn);
+}
+.review-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.review-item-subject {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--primary);
+  background: #eff6ff;
+  border-radius: 20px;
+  padding: 2px 10px;
+}
+.review-item-id {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gray-500);
+  font-family: monospace;
+}
+.review-item-text {
+  font-size: 13px;
+  color: var(--gray-700);
+  line-height: 1.6;
+  margin-bottom: 4px;
+}
+.review-item-note {
+  font-size: 12px;
+  color: var(--warn);
+  margin-bottom: 8px;
+}
+.review-done-btn {
+  background: var(--gray-200);
+  border: none;
+  border-radius: 8px;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-700);
+  cursor: pointer;
+  float: right;
+}
+.review-done-btn:active { background: var(--success-bg); color: var(--success); }
+
 /* ===== 手動苦手登録ボタン（quiz.html）===== */
 .manual-weak-btn {
   display: block;

@@ -67,6 +67,23 @@
           📌 苦手に追加
         </button>
         <div id="source-no-text" class="hidden" style="margin-top:10px;font-size:12px;color:var(--gray-500);text-align:right;"></div>
+
+        <!-- 改定候補エリア（区切り線で独立配置） -->
+        <div class="review-candidate-area" id="review-candidate-area">
+          <div id="review-btn-wrap">
+            <button class="review-candidate-btn" id="review-candidate-btn" onclick="showReviewForm()">
+              📋 改定候補に追加
+            </button>
+          </div>
+          <div id="review-form-wrap" class="hidden">
+            <input type="text" id="review-note" placeholder="改定メモ（任意）" class="review-note-input" maxlength="100">
+            <div class="review-form-actions">
+              <button class="btn-review-cancel" onclick="cancelReview()">キャンセル</button>
+              <button class="btn-review-submit" onclick="submitReview()">登録する</button>
+            </div>
+          </div>
+          <div id="review-done-msg" class="hidden review-done-msg">✔ 改定候補に登録しました</div>
+        </div>
       </div>
     </div>
   </div>
@@ -239,6 +256,57 @@
     }
   }
 
+  // ===== 改定候補 =====
+  function initReviewArea() {
+    const { subject } = QuizAPI.getParams();
+    const q = quiz.currentQ;
+    const already = window.SyncAPI ? SyncAPI.isInReviewQueue(subject, q.id) : false;
+    document.getElementById('review-btn-wrap').classList.remove('hidden');
+    document.getElementById('review-form-wrap').classList.add('hidden');
+    const doneMsg = document.getElementById('review-done-msg');
+    const btn = document.getElementById('review-candidate-btn');
+    if (already) {
+      doneMsg.classList.remove('hidden');
+      document.getElementById('review-btn-wrap').classList.add('hidden');
+    } else {
+      doneMsg.classList.add('hidden');
+      btn.textContent = '📋 改定候補に追加';
+      btn.disabled = false;
+    }
+  }
+
+  function showReviewForm() {
+    document.getElementById('review-btn-wrap').classList.add('hidden');
+    document.getElementById('review-form-wrap').classList.remove('hidden');
+    document.getElementById('review-note').value = '';
+    document.getElementById('review-note').focus();
+  }
+
+  function cancelReview() {
+    document.getElementById('review-form-wrap').classList.add('hidden');
+    document.getElementById('review-btn-wrap').classList.remove('hidden');
+  }
+
+  async function submitReview() {
+    const { subject } = QuizAPI.getParams();
+    const q = quiz.currentQ;
+    const note = document.getElementById('review-note').value.trim();
+    const SUBJECT_NAMES_MAP = {
+      kokumin_kenko_hoken: '国民健康保険法',
+      kenkou_hoken: '健康保険法',
+      kousei_nenkin: '厚生年金保険法',
+    };
+    const subjectName = SUBJECT_NAMES_MAP[subject] || subject;
+    const shortText = q.question.length > 40 ? q.question.substring(0, 40) + '…' : q.question;
+
+    if (window.SyncAPI) {
+      await SyncAPI.addToReviewQueue(subject, q.id, q.question, note);
+    }
+
+    document.getElementById('review-form-wrap').classList.add('hidden');
+    document.getElementById('review-done-msg').classList.remove('hidden');
+  }
+
   // 手動苦手登録
   function handleManualWeak() {
     const { subject } = QuizAPI.getParams();
@@ -307,6 +375,7 @@
     }
 
     document.getElementById('explanation-panel').classList.remove('hidden');
+    initReviewArea();
 
     // 次へボタン
     const nextWrap = document.getElementById('next-btn-wrap');

@@ -162,6 +162,12 @@
     </div>
   </div>
 
+  <!-- 改定候補リスト（件数がある場合のみ表示） -->
+  <div id="review-queue-section" class="hidden">
+    <div class="section-title">📋 改定候補</div>
+    <div id="review-queue-list"></div>
+  </div>
+
   <!-- 同期設定カード -->
   <div class="section-title">クロスデバイス同期</div>
   <div class="sync-card">
@@ -282,6 +288,46 @@
     }
 
     renderSyncStatus();
+    renderReviewQueue();
+  }
+
+  // 改定候補リストを描画
+  async function renderReviewQueue() {
+    if (!window.SyncAPI) return;
+    const items = await SyncAPI.getReviewQueue();
+    const section = document.getElementById('review-queue-section');
+    const list = document.getElementById('review-queue-list');
+    if (items.length === 0) { section.classList.add('hidden'); return; }
+    section.classList.remove('hidden');
+    const SUBJECT_NAMES_MAP = {
+      kokumin_kenko_hoken: '国民健康保険法',
+      kenkou_hoken:        '健康保険法',
+      kousei_nenkin:       '厚生年金保険法',
+    };
+    list.innerHTML = items.map(item => {
+      const subjectName = SUBJECT_NAMES_MAP[item.subjectKey] || item.subjectKey;
+      const shortText = (item.questionText || '').length > 50
+        ? item.questionText.substring(0, 50) + '…' : (item.questionText || '');
+      const noteHtml = item.note ? `<div class="review-item-note">📝 ${item.note}</div>` : '';
+      return `<div class="review-item" id="ri-${item.localId}">
+        <div class="review-item-header">
+          <span class="review-item-subject">${subjectName}</span>
+          <span class="review-item-id">ID: ${item.questionId}</span>
+        </div>
+        <div class="review-item-text">「${shortText}」</div>
+        ${noteHtml}
+        <button class="review-done-btn" onclick="markDone('${item.localId}')">✓ 確認済み</button>
+      </div>`;
+    }).join('');
+  }
+
+  async function markDone(localId) {
+    if (window.SyncAPI) await SyncAPI.markReviewDone(localId);
+    const el = document.getElementById(`ri-${localId}`);
+    if (el) el.remove();
+    if (!document.getElementById('review-queue-list').children.length) {
+      document.getElementById('review-queue-section').classList.add('hidden');
+    }
   }
 
   // 同期カードの表示を更新

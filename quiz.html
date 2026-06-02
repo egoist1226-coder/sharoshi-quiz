@@ -162,6 +162,13 @@
     kenkou_hoken:        '健康保険法',
     kousei_nenkin:       '厚生年金保険法',
   };
+  const SUBCAT_NAMES = {
+    kousei_nenkin_01: '1. 総則',
+    kousei_nenkin_02: '2. 被保険者',
+    kousei_nenkin_03: '3. 標準報酬月額',
+    kousei_nenkin_04: '4. 届出・記録等',
+    kousei_nenkin_09: '9. 老齢厚生年金',
+  };
   const DIFF_LABELS = { easy: '易', normal: '標準', hard: '難' };
   const DIFF_CLASS  = { easy: 'diff-easy', normal: 'diff-normal', hard: 'diff-hard' };
   const MODE_LABELS = { all: '全問', weak: '苦手' };
@@ -169,13 +176,15 @@
   let quiz = null;
 
   async function init() {
-    const { subject, mode } = QuizAPI.getParams();
+    const { subject, mode, subcat } = QuizAPI.getParams();
     const subjectName = SUBJECT_NAMES[subject] || subject;
+    const subcatName = subcat ? (SUBCAT_NAMES[subcat] || subcat) : '';
 
-    document.getElementById('header-title').textContent = subjectName;
+    document.getElementById('header-title').textContent =
+      subcatName ? `${subcatName}` : subjectName;
     document.getElementById('header-mode').textContent = MODE_LABELS[mode] || mode;
 
-    const allQ = await QuizAPI.loadQuestions(subject);
+    const allQ = await QuizAPI.loadQuestions(subject, subcat);
     quiz = new QuizAPI.QuizController(allQ, subject, mode);
 
     if (quiz.total === 0) {
@@ -443,11 +452,13 @@
   }
 
   function restartSame() {
-    const { subject, mode } = QuizAPI.getParams();
-    location.href = `quiz.html?subject=${subject}&mode=${mode}`;
+    const { subject, mode, subcat } = QuizAPI.getParams();
+    const subcatParam = subcat ? `&subcat=${subcat}` : '';
+    location.href = `quiz.html?subject=${subject}&mode=${mode}${subcatParam}`;
   }
 
   function retryWeak() {
+    // 苦手問題は科目全体で管理（サブカテゴリを外してフル科目の苦手演習）
     const { subject } = QuizAPI.getParams();
     location.href = `quiz.html?subject=${subject}&mode=weak`;
   }

@@ -51,6 +51,45 @@
       cursor: pointer;
       padding: 4px;
     }
+    .modal-subcat-divider {
+      text-align: center;
+      font-size: 12px;
+      color: var(--gray-400);
+      margin: 18px 0 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .modal-subcat-divider::before,
+    .modal-subcat-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--gray-200);
+    }
+    .subcat-btn {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      padding: 12px 16px;
+      margin-bottom: 8px;
+      background: var(--gray-100);
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--gray-800);
+      text-align: left;
+      transition: background 0.15s;
+    }
+    .subcat-btn:active { background: var(--gray-200); }
+    .subcat-btn-count {
+      font-size: 12px;
+      color: var(--gray-500);
+      font-weight: 400;
+    }
   </style>
 </head>
 <body>
@@ -136,7 +175,7 @@
       <div style="display:flex; justify-content:space-between; align-items:start">
         <div>
           <div class="subject-card-title">厚生年金保険法</div>
-          <div class="subject-card-meta">全140問（①②からランダム30問）・ 社会保険</div>
+          <div class="subject-card-meta">全185問（全問ランダム or サブカテゴリ選択）・ 社会保険</div>
         </div>
         <button class="reset-btn" onclick="handleReset('kousei_nenkin', this)">リセット</button>
       </div>
@@ -233,6 +272,11 @@
       <button class="btn btn-primary" style="width:100%; font-size:16px; padding:16px;" onclick="startQuiz()">
         この設定で開始 ▶
       </button>
+    </div>
+    <!-- サブカテゴリ別演習（厚生年金のみ表示） -->
+    <div id="modal-subcat-section" class="hidden">
+      <div class="modal-subcat-divider">サブカテゴリ別演習</div>
+      <div id="modal-subcat-list"></div>
     </div>
   </div>
 </div>
@@ -416,8 +460,17 @@
   const ALL_MODE_DESC = {
     kokumin_kenko_hoken: '全100問からランダムに30問を出題',
     kenkou_hoken:        '全565問（①〜④）からランダムに30問を出題',
-    kousei_nenkin:       '全140問（①②）からランダムに30問を出題',
+    kousei_nenkin:       '全185問からランダムに30問を出題',
   };
+
+  // 厚生年金保険法のサブカテゴリ定義
+  const KOUSEI_NENKIN_SUBCATS = [
+    { file: 'kousei_nenkin_01', label: '1. 総則',              count: 6  },
+    { file: 'kousei_nenkin_02', label: '2. 被保険者',           count: 63 },
+    { file: 'kousei_nenkin_03', label: '3. 標準報酬月額及び標準賞与額', count: 27 },
+    { file: 'kousei_nenkin_04', label: '4. 届出・記録等',        count: 44 },
+    { file: 'kousei_nenkin_09', label: '9. 老齢厚生年金',        count: 45 },
+  ];
 
   function openModal(subject) {
     currentSubject = subject;
@@ -438,7 +491,27 @@
     weakEl.style.opacity = weakIds.length === 0 ? '0.5' : '1';
     weakEl.style.pointerEvents = weakIds.length === 0 ? 'none' : 'auto';
 
+    // サブカテゴリセクション（厚生年金のみ表示）
+    const subcatSection = document.getElementById('modal-subcat-section');
+    const subcatList = document.getElementById('modal-subcat-list');
+    if (subject === 'kousei_nenkin') {
+      subcatSection.classList.remove('hidden');
+      subcatList.innerHTML = KOUSEI_NENKIN_SUBCATS.map(sc =>
+        `<button class="subcat-btn" onclick="startSubcatQuiz('${sc.file}')">
+          <span>${sc.label}</span>
+          <span class="subcat-btn-count">${sc.count}問 ›</span>
+        </button>`
+      ).join('');
+    } else {
+      subcatSection.classList.add('hidden');
+    }
+
     document.getElementById('modal').classList.add('show');
+  }
+
+  function startSubcatQuiz(subcatFile) {
+    closeModal();
+    location.href = `quiz.html?subject=${currentSubject}&mode=all&subcat=${subcatFile}`;
   }
 
   function closeModalOutside(e) {

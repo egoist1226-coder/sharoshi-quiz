@@ -122,16 +122,20 @@ const MULTI_SUBJECT_FILES = {
 const SUBJECT_FILE_ALIAS = {};
 
 // ===== 問題データ読み込み =====
-async function loadQuestions(subjectFile) {
+// subcat: 特定ファイル名を指定するとそのファイルのみ読み込む（サブカテゴリ演習用）
+async function loadQuestions(subjectFile, subcat) {
   if (MULTI_SUBJECT_FILES[subjectFile]) {
     const config = MULTI_SUBJECT_FILES[subjectFile];
     const files = Array.isArray(config) ? config : config.files;
     const noIdTransform = !Array.isArray(config) && !!config.noIdTransform;
+    // サブカテゴリ指定がある場合は該当ファイルのみ読み込む
+    const targetFiles = (subcat && files.includes(subcat)) ? [subcat] : files;
     const results = await Promise.all(
-      files.map(f => fetch(`data/${f}.json`).then(r => r.json()))
+      targetFiles.map(f => fetch(`data/${f}.json`).then(r => r.json()))
     );
     const combined = [];
-    results.forEach((qs, fileIdx) => {
+    results.forEach((qs, idx) => {
+      const fileIdx = noIdTransform ? 0 : (subcat ? files.indexOf(targetFiles[0]) : idx);
       qs.forEach(q => {
         combined.push(noIdTransform
           ? { ...q }
@@ -151,6 +155,7 @@ function getParams() {
   return {
     subject: p.get('subject') || 'kokumin_kenko_hoken',
     mode: p.get('mode') || 'all',
+    subcat: p.get('subcat') || '',
   };
 }
 

@@ -85,10 +85,18 @@
       transition: background 0.15s;
     }
     .subcat-btn:active { background: var(--gray-200); }
+    .subcat-btn-label { flex: 1; }
     .subcat-btn-count {
       font-size: 12px;
       color: var(--gray-500);
       font-weight: 400;
+      flex-shrink: 0;
+    }
+    .subcat-btn-accuracy {
+      font-size: 11px;
+      color: var(--primary, #4f46e5);
+      font-weight: 500;
+      margin-left: 6px;
     }
   </style>
 </head>
@@ -463,14 +471,28 @@
     kousei_nenkin:       '全185問からランダムに30問を出題',
   };
 
-  // 厚生年金保険法のサブカテゴリ定義
+  // 厚生年金保険法のサブカテゴリ定義（idRange: [min, max] で正答率集計に使用）
   const KOUSEI_NENKIN_SUBCATS = [
-    { file: 'kousei_nenkin_01', label: '1. 総則',              count: 6  },
-    { file: 'kousei_nenkin_02', label: '2. 被保険者',           count: 63 },
-    { file: 'kousei_nenkin_03', label: '3. 標準報酬月額及び標準賞与額', count: 27 },
-    { file: 'kousei_nenkin_04', label: '4. 届出・記録等',        count: 44 },
-    { file: 'kousei_nenkin_09', label: '9. 老齢厚生年金',        count: 45 },
+    { file: 'kousei_nenkin_01', label: '1. 総則',              count: 6,  idRange: [1,   6]   },
+    { file: 'kousei_nenkin_02', label: '2. 被保険者',           count: 63, idRange: [7,   69]  },
+    { file: 'kousei_nenkin_03', label: '3. 標準報酬月額及び標準賞与額', count: 27, idRange: [70,  96]  },
+    { file: 'kousei_nenkin_04', label: '4. 届出・記録等',        count: 44, idRange: [97,  140] },
+    { file: 'kousei_nenkin_09', label: '9. 老齢厚生年金',        count: 45, idRange: [216, 260] },
   ];
+
+  // サブカテゴリの正答率を計算（未演習はnullを返す）
+  function getSubcatAccuracy(subject, idMin, idMax) {
+    const qs = QuizAPI.loadStorage()[subject]?.questions || {};
+    let correct = 0, attempts = 0;
+    for (const [id, data] of Object.entries(qs)) {
+      const n = parseInt(id);
+      if (n >= idMin && n <= idMax && (data.attempts || 0) > 0) {
+        correct  += data.correct  || 0;
+        attempts += data.attempts || 0;
+      }
+    }
+    return attempts === 0 ? null : Math.round((correct / attempts) * 100);
+  }
 
   function openModal(subject) {
     currentSubject = subject;
@@ -496,12 +518,16 @@
     const subcatList = document.getElementById('modal-subcat-list');
     if (subject === 'kousei_nenkin') {
       subcatSection.classList.remove('hidden');
-      subcatList.innerHTML = KOUSEI_NENKIN_SUBCATS.map(sc =>
-        `<button class="subcat-btn" onclick="startSubcatQuiz('${sc.file}')">
-          <span>${sc.label}</span>
+      subcatList.innerHTML = KOUSEI_NENKIN_SUBCATS.map(sc => {
+        const acc = getSubcatAccuracy('kousei_nenkin', sc.idRange[0], sc.idRange[1]);
+        const accHtml = acc !== null
+          ? `<span class="subcat-btn-accuracy">正答率${acc}%</span>`
+          : '';
+        return `<button class="subcat-btn" onclick="startSubcatQuiz('${sc.file}')">
+          <span class="subcat-btn-label">${sc.label}${accHtml}</span>
           <span class="subcat-btn-count">${sc.count}問 ›</span>
-        </button>`
-      ).join('');
+        </button>`;
+      }).join('');
     } else {
       subcatSection.classList.add('hidden');
     }

@@ -185,12 +185,14 @@ class QuizController {
   }
 
   _selectQuestions(all, mode, subjectKey) {
+    // 問題数が SESSION_SIZE 未満の場合は全問を上限とする
+    const limit = Math.min(SESSION_SIZE, all.length);
     if (mode === 'weak') {
       const weakIds = getWeakQuestionIds(subjectKey);
       const weak = shuffle(all.filter(q => weakIds.includes(q.id)));
-      return weak.slice(0, SESSION_SIZE);
+      return weak.slice(0, limit);
     }
-    return shuffle(all).slice(0, SESSION_SIZE);
+    return shuffle(all).slice(0, limit);
   }
 
   get total() { return this.questions.length; }

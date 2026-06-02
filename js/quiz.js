@@ -115,7 +115,7 @@ function cleanStaleIds(subjectKey, validIds) {
 // オブジェクト形式 { files, noIdTransform:true }: IDをそのまま使う（kousei_nenkin等）
 const MULTI_SUBJECT_FILES = {
   kenkou_hoken: ['kenkou_hoken_01', 'kenkou_hoken_02', 'kenkou_hoken_03', 'kenkou_hoken_04'],
-  kousei_nenkin: { files: ['kousei_nenkin_01', 'kousei_nenkin_02', 'kousei_nenkin_09'], noIdTransform: true },
+  kousei_nenkin: { files: ['kousei_nenkin_01', 'kousei_nenkin_02', 'kousei_nenkin_03', 'kousei_nenkin_04', 'kousei_nenkin_09'], noIdTransform: true },
 };
 
 // ファイル名が異なる科目の単純リダイレクト（IDは変換しない）

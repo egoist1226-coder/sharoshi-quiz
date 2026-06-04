@@ -2,6 +2,9 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <title>社労士 問題演習</title>
   <link rel="stylesheet" href="css/style.css">
@@ -309,7 +312,7 @@
   </div>
 </div>
 
-<script src="js/quiz.js"></script>
+<script src="js/quiz-core.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/sync.js"></script>
 <script>
@@ -481,16 +484,30 @@
   ];
 
   // サブカテゴリの正答率を計算（未演習はnullを返す）
-  function getSubcatAccuracy(subject, idMin, idMax) {
-    const qs = QuizAPI.loadStorage()[subject]?.questions || {};
+  // サブカテゴリ別キー（sc.file）＋全問演習キー（subject）の両方を集計
+  function getSubcatAccuracy(subject, subcatFile, idMin, idMax) {
+    const all = QuizAPI.loadStorage();
     let correct = 0, attempts = 0;
-    for (const [id, data] of Object.entries(qs)) {
+
+    // ① サブカテゴリ専用キーから集計（新方式）
+    const subcatQs = all[subcatFile]?.questions || {};
+    for (const [, data] of Object.entries(subcatQs)) {
+      if ((data.attempts || 0) > 0) {
+        correct  += data.correct  || 0;
+        attempts += data.attempts || 0;
+      }
+    }
+
+    // ② 全問演習キーからID範囲でフィルタして集計
+    const fullQs = all[subject]?.questions || {};
+    for (const [id, data] of Object.entries(fullQs)) {
       const n = parseInt(id);
       if (n >= idMin && n <= idMax && (data.attempts || 0) > 0) {
         correct  += data.correct  || 0;
         attempts += data.attempts || 0;
       }
     }
+
     return attempts === 0 ? null : Math.round((correct / attempts) * 100);
   }
 
@@ -519,7 +536,7 @@
     if (subject === 'kousei_nenkin') {
       subcatSection.classList.remove('hidden');
       subcatList.innerHTML = KOUSEI_NENKIN_SUBCATS.map(sc => {
-        const acc = getSubcatAccuracy('kousei_nenkin', sc.idRange[0], sc.idRange[1]);
+        const acc = getSubcatAccuracy('kousei_nenkin', sc.file, sc.idRange[0], sc.idRange[1]);
         const accHtml = acc !== null
           ? `<span class="subcat-btn-accuracy">正答率${acc}%</span>`
           : '';

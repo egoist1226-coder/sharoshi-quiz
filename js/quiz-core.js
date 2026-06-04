@@ -35,7 +35,6 @@ function recordAnswer(subjectKey, questionId, isCorrect) {
   if (isCorrect) {
     q.correct++;
     q.consecutiveCorrect = (q.consecutiveCorrect || 0) + 1;
-    // 苦手問題に登録済みで3連続正解 → 苦手リストから除外（手動登録も対象）
     if (!q.mastered && (q.wrong > 0 || q.manualWeak) && q.consecutiveCorrect >= 3) {
       q.mastered = true;
       wasJustMastered = true;
@@ -49,7 +48,6 @@ function recordAnswer(subjectKey, questionId, isCorrect) {
   return { wasJustMastered };
 }
 
-// 正解した問題を手動で苦手リストに追加する
 function addManualWeak(subjectKey, questionId) {
   const all = loadStorage();
   if (!all[subjectKey]) all[subjectKey] = { questions: {} };
@@ -61,63 +59,78 @@ function addManualWeak(subjectKey, questionId) {
   saveStorage(all);
 }
 
+// サブカテゴリキーを含む全関連キーを返す
+function _getRelatedKeys(subjectKey) {
+  const config = MULTI_SUBJECT_FILES[subjectKey];
+  if (!config) return [subjectKey];
+  const files = Array.isArray(config) ? config : config.files;
+  return [subjectKey, ...files];
+}
+
+// getStats: 全問演習(subjectKey)＋全サブカテゴリキーを集計
 function getStats(subjectKey) {
-  const data = getSubjectData(subjectKey);
-  const q = data.questions;
-  let totalAttempts = 0, totalCorrect = 0, weakCount = 0;
-  for (const id in q) {
-    totalAttempts += q[id].attempts;
-    totalCorrect += q[id].correct;
-    // mastered（3連続正解済み）は苦手カウントから除外。手動登録も含む
-    if ((q[id].wrong > 0 || q[id].manualWeak) && !q[id].mastered) weakCount++;
+  const all = loadStorage();
+  const keys = _getRelatedKeys(subjectKey);
+  let totalAttempts = 0, totalCorrect = 0;
+  const weakSet = new Set();
+
+  for (const key of keys) {
+    const q = all[key]?.questions || {};
+    for (const id in q) {
+      totalAttempts += q[id].attempts || 0;
+      totalCorrect += q[id].correct || 0;
+      if ((q[id].wrong > 0 || q[id].manualWeak) && !q[id].mastered) {
+        weakSet.add(`${key}::${id}`);
+      }
+    }
   }
-  return { totalAttempts, totalCorrect, weakCount };
+  return { totalAttempts, totalCorrect, weakCount: weakSet.size };
 }
 
+// getWeakQuestionIds: 全関連キーから苦手問題IDを集約（重複排除）
 function getWeakQuestionIds(subjectKey) {
-  const data = getSubjectData(subjectKey);
-  return Object.entries(data.questions)
-    .filter(([, v]) => (v.wrong > 0 || v.manualWeak) && !v.mastered)
-    .map(([id]) => parseInt(id));
+  const all = loadStorage();
+  const keys = _getRelatedKeys(subjectKey);
+  const idSet = new Set();
+  for (const key of keys) {
+    const q = all[key]?.questions || {};
+    Object.entries(q)
+      .filter(([, v]) => (v.wrong > 0 || v.manualWeak) && !v.mastered)
+      .forEach(([id]) => idSet.add(parseInt(id)));
+  }
+  return [...idSet];
 }
 
-// 問題のマスター状態を取得（苦手リストから除外済みかどうか）
 function getQuestionConsecutive(subjectKey, questionId) {
   const data = getSubjectData(subjectKey);
   const q = data.questions[questionId];
   return q ? { consecutiveCorrect: q.consecutiveCorrect || 0, mastered: !!q.mastered } : { consecutiveCorrect: 0, mastered: false };
 }
 
+// resetSubject: 全問演習キー＋全サブカテゴリキーをリセット
 function resetSubject(subjectKey) {
   const all = loadStorage();
-  all[subjectKey] = { questions: {} };
+  const keys = _getRelatedKeys(subjectKey);
+  for (const key of keys) {
+    all[key] = { questions: {} };
+  }
   saveStorage(all);
 }
 
-// cleanStaleIds は廃止（自動呼び出しなし）
-// 問題IDは安定しており自動削除による誤データ消失リスクの方が大きいため無効化。
-// 明示的なリセットはresetSubject()で行う。
-function cleanStaleIds() { /* no-op */ }
-
 // ===== 複数ファイル統合設定 =====
-// 配列形式: IDを (fileIdx+1)*10000+元ID で一意化する（kenkou_hoken等）
-// オブジェクト形式 { files, noIdTransform:true }: IDをそのまま使う（kousei_nenkin等）
 const MULTI_SUBJECT_FILES = {
   kenkou_hoken: ['kenkou_hoken_01', 'kenkou_hoken_02', 'kenkou_hoken_03', 'kenkou_hoken_04'],
   kousei_nenkin: { files: ['kousei_nenkin_01', 'kousei_nenkin_02', 'kousei_nenkin_03', 'kousei_nenkin_04', 'kousei_nenkin_09'], noIdTransform: true },
 };
 
-// ファイル名が異なる科目の単純リダイレクト（IDは変換しない）
 const SUBJECT_FILE_ALIAS = {};
 
 // ===== 問題データ読み込み =====
-// subcat: 特定ファイル名を指定するとそのファイルのみ読み込む（サブカテゴリ演習用）
 async function loadQuestions(subjectFile, subcat) {
   if (MULTI_SUBJECT_FILES[subjectFile]) {
     const config = MULTI_SUBJECT_FILES[subjectFile];
     const files = Array.isArray(config) ? config : config.files;
     const noIdTransform = !Array.isArray(config) && !!config.noIdTransform;
-    // サブカテゴリ指定がある場合は該当ファイルのみ読み込む
     const targetFiles = (subcat && files.includes(subcat)) ? [subcat] : files;
     const ts = Date.now();
     const results = await Promise.all(
@@ -161,12 +174,10 @@ function shuffle(arr) {
 
 // ===== クイズコントローラー =====
 class QuizController {
-  constructor(questions, subjectKey, mode, subcat = '') {
+  constructor(questions, subjectKey, mode) {
     this.subjectKey = subjectKey;
     this.mode = mode;
     this.allQuestions = questions;
-    // サブカテゴリ演習時はスキップ（他サブカテゴリの記録を誤削除しないため）
-    if (!subcat) cleanStaleIds(subjectKey, questions.map(q => q.id));
     this.questions = this._selectQuestions(questions, mode, subjectKey);
     this.current = 0;
     this.correctCount = 0;
@@ -175,7 +186,6 @@ class QuizController {
   }
 
   _selectQuestions(all, mode, subjectKey) {
-    // 問題数が SESSION_SIZE 未満の場合は全問を上限とする
     const limit = Math.min(SESSION_SIZE, all.length);
 
     if (mode === 'weak') {
@@ -184,10 +194,7 @@ class QuizController {
       return weak.slice(0, limit);
     }
 
-    // 通常モード: 出題頻度が低い問題を優先して均等に出題
-    // 1. まずシャッフルして同回数内のランダム性を確保
-    // 2. 累計出題回数（attempts）の少ない順にソート
-    // → 未出題の問題が常に先に消化され、全問題がまんべんなく出題される
+    // 通常モード: 出題頻度が低い問題を優先
     const qs = loadStorage()[subjectKey]?.questions || {};
     const weighted = shuffle(all).map(q => ({
       q,

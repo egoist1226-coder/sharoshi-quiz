@@ -37,12 +37,14 @@ function buildPrompt(isTwoPage, retryNote = '') {
 - 難問ラベルがある問題はdifficulty: "hard"、基礎ラベルはdifficulty: "easy"、それ以外はdifficulty: "normal"
 - categoryは問題のカテゴリ（例：障害厚生年金）
 - line_count: 画像上でその問題文が占める行数（句読点・スペース含む印刷行数）を正確に数える
+- last_line_half: 最終行の末尾文字の位置。1行36文字のうち左半分（1〜18文字目）で終わる場合は "left"、右半分（19〜36文字目）で終わる場合は "right"
 
 JSONのみを返すこと（説明文は不要）:
 [
   {
     "id": 数値,
     "line_count": 整数,
+    "last_line_half": "left" または "right",
     "category": "カテゴリ名",
     "question": "問題文（原文そのまま）",
     "answer": true,
@@ -64,20 +66,34 @@ function validateCharCount(questions) {
       valid.push(q);
       continue;
     }
-    const n      = q.line_count;
+    const n    = q.line_count;
+    const half = q.last_line_half; // "left"(1-18) or "right"(19-36)
+    const base = (n - 1) * CHARS_PER_LINE;
     const actual = q.question.length;
-    // 理論範囲: (n-1)*36+1 ～ n*36
-    const lower  = (n - 1) * CHARS_PER_LINE + 1 - CHAR_BUFFER;
-    const upper  = n * CHARS_PER_LINE + CHAR_BUFFER;
+
+    // last_line_half で最終行の位置を特定し範囲を±18字に絞る
+    let lower, upper;
+    if (half === 'left') {
+      lower = base + 1  - CHAR_BUFFER;  // 最終行 1〜18字
+      upper = base + 18 + CHAR_BUFFER;
+    } else if (half === 'right') {
+      lower = base + 19 - CHAR_BUFFER;  // 最終行 19〜36字
+      upper = base + 36 + CHAR_BUFFER;
+    } else {
+      // last_line_half 未取得時は従来の全範囲（1〜36字）
+      lower = base + 1  - CHAR_BUFFER;
+      upper = base + 36 + CHAR_BUFFER;
+    }
 
     if (actual < lower || actual > upper) {
       invalid.push({
         id: q.id,
         line_count: n,
+        last_line_half: half,
         lower,
         upper,
         actual,
-        diff: actual - n * CHARS_PER_LINE,
+        diff: actual - (base + (half === 'left' ? 9 : 27)), // 中央値との差
       });
     } else {
       valid.push(q);
@@ -215,8 +231,8 @@ async function handleExtract(request, env) {
       allQuestions.push(...lastRetried.filter(q => lastIds.has(q.id)));
     }
 
-    // line_count フィールドを削除（DBには不要）
-    const output = allQuestions.map(({ line_count, ...q }) => q);
+    // 検証用フィールドを削除（DBには不要）
+    const output = allQuestions.map(({ line_count, last_line_half, ...q }) => q);
 
     return json({
       success: true,

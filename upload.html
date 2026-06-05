@@ -67,13 +67,26 @@
   <!-- Step1: 写真選択 -->
   <div class="upload-section" id="step-photo">
     <div class="upload-title">① 問題集の写真を選択</div>
+
+    <!-- 問題ページ -->
+    <div class="form-label" style="margin-bottom:6px">📄 問題ページ</div>
     <div class="file-input-wrap">
-      <label class="file-input-btn" for="file-input">
-        📷 写真を撮影 / ファイルを選択
+      <label class="file-input-btn" for="file-input-q">
+        📷 問題ページを撮影 / 選択
       </label>
-      <input type="file" id="file-input" accept="image/*" capture="environment">
+      <input type="file" id="file-input-q" accept="image/*" capture="environment">
     </div>
-    <img id="preview-img" class="preview-img" style="display:none">
+    <img id="preview-img-q" class="preview-img" style="display:none">
+
+    <!-- 解説ページ -->
+    <div class="form-label" style="margin-top:14px; margin-bottom:6px">📄 解説ページ（省略可）</div>
+    <div class="file-input-wrap">
+      <label class="file-input-btn" for="file-input-a" style="border-color:#a5b4fc">
+        📷 解説ページを撮影 / 選択
+      </label>
+      <input type="file" id="file-input-a" accept="image/*" capture="environment">
+    </div>
+    <img id="preview-img-a" class="preview-img" style="display:none">
   </div>
 
   <!-- Step2: 設定 -->
@@ -144,49 +157,64 @@
   }
 
   // ファイル選択時にプレビュー表示
-  document.getElementById('file-input').addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function(ev) {
-      const img = document.getElementById('preview-img');
-      img.src = ev.target.result;
-      img.style.display = 'block';
-      document.getElementById('btn-extract').disabled = false;
-    };
-    reader.readAsDataURL(file);
-  });
+  function setupFileInput(inputId, previewId) {
+    document.getElementById(inputId).addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        const img = document.getElementById(previewId);
+        img.src = ev.target.result;
+        img.style.display = 'block';
+        // 問題ページが選択されたら抽出ボタンを有効化
+        if (inputId === 'file-input-q') {
+          document.getElementById('btn-extract').disabled = false;
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  setupFileInput('file-input-q', 'preview-img-q');
+  setupFileInput('file-input-a', 'preview-img-a');
 
   // 問題抽出
   async function extractQuestions() {
-    const file = document.getElementById('file-input').files[0];
+    const fileQ = document.getElementById('file-input-q').files[0];
+    const fileA = document.getElementById('file-input-a').files[0];
     const secret = document.getElementById('upload-secret').value;
     const workerUrl = localStorage.getItem('worker_url');
 
-    if (!file) return alert('写真を選択してください');
+    if (!fileQ) return alert('問題ページの写真を選択してください');
     if (!secret) return alert('認証コードを入力してください');
     if (!workerUrl) return alert('Worker URLを設定してください');
 
     setExtracting(true);
 
     try {
-      // 画像をbase64に変換
-      const base64 = await fileToBase64(file);
-      const mimeType = file.type || 'image/jpeg';
+      let body;
+
+      if (fileA) {
+        // 2枚モード（問題ページ＋解説ページ）
+        const [b64Q, b64A] = await Promise.all([fileToBase64(fileQ), fileToBase64(fileA)]);
+        body = {
+          imageQ: b64Q.split(',')[1], mimeTypeQ: fileQ.type || 'image/jpeg',
+          imageA: b64A.split(',')[1], mimeTypeA: fileA.type || 'image/jpeg',
+        };
+      } else {
+        // 1枚モード
+        const b64 = await fileToBase64(fileQ);
+        body = { image: b64.split(',')[1], mimeType: fileQ.type || 'image/jpeg' };
+      }
 
       const res = await fetch(`${workerUrl}/extract`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Upload-Secret': secret,
-        },
-        body: JSON.stringify({ image: base64.split(',')[1], mimeType })
+        headers: { 'Content-Type': 'application/json', 'X-Upload-Secret': secret },
+        body: JSON.stringify(body)
       });
 
       const data = await res.json();
-
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Extraction failed');
+        throw new Error((data.error || 'Extraction failed') + (data.detail ? ': ' + data.detail : ''));
       }
 
       extractedQuestions = data.questions;

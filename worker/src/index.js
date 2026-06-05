@@ -9,12 +9,38 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type, X-Upload-Secret',
 };
 
-const CLAUDE_PROMPT = `この画像は社労士試験の問題集のページです。
+// 1枚送信時のプロンプト（問題・解説が同一ページ）
+const CLAUDE_PROMPT_SINGLE = `この画像は社労士試験の問題集のページです。
 ページに掲載されているすべての問題を抽出してください。
 
 抽出ルール：
 - 問題番号（数値）をidおよびsource_noに使う
 - 答の○はtrue、×はfalseとする
+- 解説中の赤文字・強調語は <span class="wrong-key">...</span> で囲む
+- 難問ラベルがある問題はdifficulty: "hard"、基礎ラベルはdifficulty: "easy"、それ以外はdifficulty: "normal"
+- categoryは問題のカテゴリ（例：障害厚生年金）
+
+JSONのみを返すこと（説明文は不要）:
+[
+  {
+    "id": 数値,
+    "category": "カテゴリ名",
+    "question": "問題文",
+    "answer": true,
+    "explanation": "解説文（赤文字は<span class=\\"wrong-key\\">テキスト</span>で囲む）",
+    "difficulty": "normal",
+    "source_no": 数値
+  }
+]`;
+
+// 2枚送信時のプロンプト（1枚目=問題ページ、2枚目=解説ページ）
+const CLAUDE_PROMPT_DOUBLE = `2枚の画像は社労士試験の問題集です。
+1枚目が問題ページ、2枚目が解答・解説ページです。
+問題番号で対応させて、すべての問題を抽出してください。
+
+抽出ルール：
+- 問題番号（数値）をidおよびsource_noに使う
+- 答の○はtrue、×はfalseとする（解説ページの○×を参照）
 - 解説中の赤文字・強調語は <span class="wrong-key">...</span> で囲む
 - 難問ラベルがある問題はdifficulty: "hard"、基礎ラベルはdifficulty: "easy"、それ以外はdifficulty: "normal"
 - categoryは問題のカテゴリ（例：障害厚生年金）
@@ -43,9 +69,10 @@ export default {
       return json({ error: 'Method not allowed' }, 405);
     }
 
-    // 認証チェック
-    const secret = request.headers.get('X-Upload-Secret');
-    if (!env.UPLOAD_SECRET || secret !== env.UPLOAD_SECRET) {
+    // 認証チェック（trim()で改行・空白を除去して比較）
+    const secret = (request.headers.get('X-Upload-Secret') || '').trim();
+    const storedSecret = (env.UPLOAD_SECRET || '').trim();
+    if (!storedSecret || secret !== storedSecret) {
       return json({ error: 'Unauthorized' }, 401);
     }
 
@@ -65,25 +92,33 @@ export default {
   }
 };
 
-// ===== 抽出処理 =====
+// ===== 抽出処理（1枚 or 2枚対応）=====
 async function handleExtract(request, env) {
-  let imageBase64, mimeType;
+  const body = await request.json();
 
-  const contentType = request.headers.get('Content-Type') || '';
+  // image: 1枚送信、imageQ+imageA: 2枚送信
+  const { image, mimeType, imageQ, imageA, mimeTypeQ, mimeTypeA } = body;
+  const isTwoPage = !!(imageQ && imageA);
 
-  if (contentType.includes('multipart/form-data')) {
-    const formData = await request.formData();
-    const file = formData.get('image');
-    if (!file) return json({ error: 'No image provided' }, 400);
-    const buf = await file.arrayBuffer();
-    imageBase64 = arrayBufferToBase64(buf);
-    mimeType = file.type || 'image/jpeg';
+  if (!isTwoPage && !image) {
+    return json({ error: 'No image provided' }, 400);
+  }
+
+  // メッセージのcontentを組み立て
+  let content;
+  if (isTwoPage) {
+    // 2枚モード: 問題ページ→解説ページ→プロンプト
+    content = [
+      { type: 'image', source: { type: 'base64', media_type: mimeTypeQ || 'image/jpeg', data: imageQ } },
+      { type: 'image', source: { type: 'base64', media_type: mimeTypeA || 'image/jpeg', data: imageA } },
+      { type: 'text', text: CLAUDE_PROMPT_DOUBLE }
+    ];
   } else {
-    // JSON形式（base64）
-    const body = await request.json();
-    imageBase64 = body.image;
-    mimeType = body.mimeType || 'image/jpeg';
-    if (!imageBase64) return json({ error: 'No image provided' }, 400);
+    // 1枚モード
+    content = [
+      { type: 'image', source: { type: 'base64', media_type: mimeType || 'image/jpeg', data: image } },
+      { type: 'text', text: CLAUDE_PROMPT_SINGLE }
+    ];
   }
 
   // Claude API呼び出し
@@ -91,34 +126,24 @@ async function handleExtract(request, env) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': env.ANTHROPIC_API_KEY,
+      'x-api-key': (env.ANTHROPIC_API_KEY || '').trim(),
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-opus-4-5',
+      model: 'claude-3-5-sonnet-20241022',
       max_tokens: 8192,
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: mimeType, data: imageBase64 }
-          },
-          { type: 'text', text: CLAUDE_PROMPT }
-        ]
-      }]
+      messages: [{ role: 'user', content }]
     })
   });
 
   if (!claudeRes.ok) {
     const err = await claudeRes.text();
-    return json({ error: 'Claude API error', detail: err }, 500);
+    return json({ error: 'Claude API error', status: claudeRes.status, detail: err }, 500);
   }
 
   const claudeData = await claudeRes.json();
   const text = claudeData.content[0].text;
 
-  // JSONを抽出
   const match = text.match(/\[[\s\S]*\]/);
   if (!match) return json({ error: 'Could not parse questions from image', raw: text }, 500);
 

@@ -157,83 +157,15 @@
     location.reload();
   }
 
-  // ===== EXIF回転補正（正しい実装）=====
-  async function fixOrientation(file) {
-    // ① createImageBitmap で自動補正（モダンブラウザ向け）
-    try {
-      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-      const canvas = document.createElement('canvas');
-      canvas.width  = bitmap.width;
-      canvas.height = bitmap.height;
-      canvas.getContext('2d').drawImage(bitmap, 0, 0);
-      bitmap.close();
-      return await new Promise(resolve =>
-        canvas.toBlob(blob => resolve(new File([blob], file.name, { type: 'image/jpeg' })), 'image/jpeg', 0.92)
-      );
-    } catch(_) {}
-
-    // ② 手動EXIFフォールバック
-    const orientation = await readExifOrientation(file);
-    if (orientation <= 1) return file;
-    return new Promise(resolve => {
-      const img = new Image();
-      img.onload = () => {
-        const w = img.naturalWidth, h = img.naturalHeight;
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if ([5,6,7,8].includes(orientation)) { canvas.width = h; canvas.height = w; }
-        else                                  { canvas.width = w; canvas.height = h; }
-        const T = {
-          2:[-1,0,0,1,w,0], 3:[-1,0,0,-1,w,h], 4:[1,0,0,-1,0,h],
-          5:[0,1,1,0,0,0],  6:[0,1,-1,0,h,0],  7:[0,-1,-1,0,h,w], 8:[0,-1,1,0,0,w]
-        };
-        if (T[orientation]) ctx.transform(...T[orientation]);
-        ctx.drawImage(img, 0, 0);
-        canvas.toBlob(blob => resolve(new File([blob], file.name, { type: 'image/jpeg' })), 'image/jpeg', 0.92);
-      };
-      img.src = URL.createObjectURL(file);
-    });
-  }
-
-  async function readExifOrientation(file) {
-    try {
-      const buf  = await file.slice(0, 65536).arrayBuffer();
-      const view = new DataView(buf);
-      if (view.getUint16(0, false) !== 0xFFD8) return 1; // JPEGでない
-      let offset = 2;
-      while (offset < buf.byteLength - 4) {
-        const marker = view.getUint16(offset, false);
-        const segLen  = view.getUint16(offset + 2, false); // セグメント長
-        if (marker === 0xFFE1) { // APP1
-          // "Exif\0\0" チェック (offset+4 から6バイト)
-          if (view.getUint32(offset + 4, false) === 0x45786966) {
-            const tiff = offset + 10; // TIFFヘッダ開始
-            const le   = view.getUint16(tiff, false) === 0x4949;
-            const ifd0 = tiff + view.getUint32(tiff + 4, le); // IFD0の絶対位置
-            const nTags = view.getUint16(ifd0, le);
-            for (let i = 0; i < nTags; i++) {
-              const e = ifd0 + 2 + i * 12;
-              if (view.getUint16(e, le) === 0x0112) { // Orientationタグ
-                return view.getUint16(e + 8, le);
-              }
-            }
-          }
-        } else if (marker === 0xFFDA || marker === 0xFFD9) break; // SOS / EOI
-        offset += 2 + segLen;
-      }
-    } catch(_) {}
-    return 1;
-  }
-
   // ===== ファイル選択＋プレビュー =====
+  // ※ 回転補正なし（撮影時に正しい向きで撮影するため不要）
   function setupFileInput(inputId, previewId, isQ) {
-    document.getElementById(inputId).addEventListener('change', async function(e) {
+    document.getElementById(inputId).addEventListener('change', function(e) {
       const raw = e.target.files[0];
       if (!raw) return;
-      const fixed = await fixOrientation(raw);
-      // 補正済みファイルを変数に保存（アップロード時はこちらを使う）
-      if (isQ) { fixedFileQ = fixed; document.getElementById('btn-extract').disabled = false; }
-      else       fixedFileA = fixed;
+      // 回転補正なし：撮影した画像をそのまま使用
+      if (isQ) { fixedFileQ = raw; document.getElementById('btn-extract').disabled = false; }
+      else       fixedFileA = raw;
       // プレビュー表示
       const reader = new FileReader();
       reader.onload = ev => {
@@ -241,7 +173,7 @@
         img.src = ev.target.result;
         img.style.display = 'block';
       };
-      reader.readAsDataURL(fixed);
+      reader.readAsDataURL(raw);
     });
   }
   setupFileInput('file-input-q', 'preview-img-q', true);

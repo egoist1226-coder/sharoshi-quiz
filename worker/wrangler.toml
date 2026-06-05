@@ -1,0 +1,12 @@
+name = "sharoshi-quiz-worker"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+GITHUB_OWNER = "egoist1226-coder"
+GITHUB_REPO  = "sharoshi-quiz"
+
+# 以下はダッシュボードのSecrets（暗号化）で設定すること:
+# ANTHROPIC_API_KEY
+# GITHUB_TOKEN
+# UPLOAD_SECRET  （アップロード認証用パスワード）

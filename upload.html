@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>問題追加 - 社労士</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .upload-page { max-width: 600px; margin: 0 auto; padding: 16px; }
+    .upload-section { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .upload-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; color: #1e293b; }
+    .file-input-wrap { position: relative; }
+    .file-input-btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; padding: 40px 16px; border: 2px dashed #cbd5e1;
+      border-radius: 12px; background: #f8fafc; cursor: pointer;
+      font-size: 15px; color: #64748b; font-weight: 600;
+    }
+    .file-input-btn:active { background: #e2e8f0; }
+    #file-input { display: none; }
+    .preview-img { width: 100%; border-radius: 8px; margin-top: 12px; max-height: 400px; object-fit: contain; }
+    .form-row { margin-bottom: 12px; }
+    .form-label { display: block; font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 4px; }
+    .form-select, .form-input {
+      width: 100%; padding: 10px 12px; border: 1px solid #e2e8f0;
+      border-radius: 8px; font-size: 14px; color: #1e293b;
+    }
+    .btn-extract {
+      width: 100%; padding: 14px; background: #4f46e5; color: #fff;
+      border: none; border-radius: 10px; font-size: 16px; font-weight: 700;
+      cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn-extract:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-commit {
+      width: 100%; padding: 14px; background: #16a34a; color: #fff;
+      border: none; border-radius: 10px; font-size: 16px; font-weight: 700;
+      cursor: pointer; margin-top: 12px;
+    }
+    .btn-commit:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-back { background: none; border: none; color: #64748b; font-size: 22px; cursor: pointer; }
+    .spinner { width: 20px; height: 20px; border: 3px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .q-card { background: #f8fafc; border-radius: 8px; padding: 12px; margin-bottom: 10px; font-size: 13px; }
+    .q-id { font-weight: 700; color: #4f46e5; margin-bottom: 4px; }
+    .q-text { margin-bottom: 6px; line-height: 1.5; }
+    .q-answer { font-weight: 600; color: #16a34a; }
+    .q-answer.wrong { color: #dc2626; }
+    .q-exp { color: #475569; margin-top: 6px; font-size: 12px; line-height: 1.5; }
+    .status-box { padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 600; margin-top: 8px; text-align: center; }
+    .status-box.success { background: #dcfce7; color: #166534; }
+    .status-box.error   { background: #fee2e2; color: #991b1b; }
+    .status-box.loading { background: #ede9fe; color: #4338ca; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; margin-left: 6px; }
+    .badge-count { background: #e0e7ff; color: #4338ca; }
+  </style>
+</head>
+<body>
+<div class="header">
+  <button class="btn-back" onclick="history.back()">‹</button>
+  <h1>📸 問題追加</h1>
+  <span class="header-badge">β</span>
+</div>
+
+<div class="upload-page">
+
+  <!-- Step1: 写真選択 -->
+  <div class="upload-section" id="step-photo">
+    <div class="upload-title">① 問題集の写真を選択</div>
+    <div class="file-input-wrap">
+      <label class="file-input-btn" for="file-input">
+        📷 写真を撮影 / ファイルを選択
+      </label>
+      <input type="file" id="file-input" accept="image/*" capture="environment">
+    </div>
+    <img id="preview-img" class="preview-img" style="display:none">
+  </div>
+
+  <!-- Step2: 設定 -->
+  <div class="upload-section">
+    <div class="upload-title">② 登録先を選択</div>
+    <div class="form-row">
+      <label class="form-label">登録先ファイル</label>
+      <select id="subcat-file" class="form-select">
+        <option value="kousei_nenkin_10">厚生年金保険法 ⑩障害厚生年金</option>
+        <option value="kousei_nenkin_11">厚生年金保険法 ⑪遺族厚生年金</option>
+        <option value="kousei_nenkin_12">厚生年金保険法 ⑫その他</option>
+        <option value="kenkou_hoken_05">健康保険法 ⑤その他</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label class="form-label">認証コード</label>
+      <input type="password" id="upload-secret" class="form-input" placeholder="設定したパスワード">
+    </div>
+    <button class="btn-extract" id="btn-extract" onclick="extractQuestions()" disabled>
+      <span id="extract-label">🔍 問題を抽出する</span>
+      <span id="extract-spinner" class="spinner" style="display:none"></span>
+    </button>
+  </div>
+
+  <!-- Step3: プレビュー -->
+  <div class="upload-section" id="step-preview" style="display:none">
+    <div class="upload-title">
+      ③ 抽出結果を確認
+      <span class="badge badge-count" id="q-count">0問</span>
+    </div>
+    <div id="preview-list"></div>
+    <button class="btn-commit" id="btn-commit" onclick="commitQuestions()">
+      ✅ GitHubに登録する
+    </button>
+    <div id="commit-status"></div>
+  </div>
+
+</div>
+
+<script>
+  // ===== 設定 =====
+  // デプロイ後にWorkerのURLを設定
+  const WORKER_URL = localStorage.getItem('worker_url') || '';
+
+  let extractedQuestions = [];
+
+  // Worker URLが未設定なら入力欄を表示
+  if (!WORKER_URL) {
+    document.querySelector('.upload-page').insertAdjacentHTML('afterbegin', `
+      <div class="upload-section" style="background:#fff3cd">
+        <div class="upload-title">⚠️ Worker URL を設定</div>
+        <div class="form-row">
+          <input type="url" id="worker-url-input" class="form-input"
+            placeholder="https://sharoshi-quiz-worker.xxxxx.workers.dev">
+        </div>
+        <button class="btn-extract" onclick="saveWorkerUrl()" style="background:#d97706">
+          保存する
+        </button>
+      </div>
+    `);
+  }
+
+  function saveWorkerUrl() {
+    const url = document.getElementById('worker-url-input').value.trim();
+    if (!url) return;
+    localStorage.setItem('worker_url', url);
+    location.reload();
+  }
+
+  // ファイル選択時にプレビュー表示
+  document.getElementById('file-input').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+      const img = document.getElementById('preview-img');
+      img.src = ev.target.result;
+      img.style.display = 'block';
+      document.getElementById('btn-extract').disabled = false;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // 問題抽出
+  async function extractQuestions() {
+    const file = document.getElementById('file-input').files[0];
+    const secret = document.getElementById('upload-secret').value;
+    const workerUrl = localStorage.getItem('worker_url');
+
+    if (!file) return alert('写真を選択してください');
+    if (!secret) return alert('認証コードを入力してください');
+    if (!workerUrl) return alert('Worker URLを設定してください');
+
+    setExtracting(true);
+
+    try {
+      // 画像をbase64に変換
+      const base64 = await fileToBase64(file);
+      const mimeType = file.type || 'image/jpeg';
+
+      const res = await fetch(`${workerUrl}/extract`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Upload-Secret': secret,
+        },
+        body: JSON.stringify({ image: base64.split(',')[1], mimeType })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Extraction failed');
+      }
+
+      extractedQuestions = data.questions;
+      showPreview(extractedQuestions);
+
+    } catch (err) {
+      alert('エラー: ' + err.message);
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  // プレビュー表示
+  function showPreview(questions) {
+    document.getElementById('step-preview').style.display = 'block';
+    document.getElementById('q-count').textContent = `${questions.length}問`;
+
+    const list = document.getElementById('preview-list');
+    list.innerHTML = questions.map(q => `
+      <div class="q-card">
+        <div class="q-id">問${q.id}（${q.category}）</div>
+        <div class="q-text">${q.question}</div>
+        <div class="q-answer ${q.answer ? '' : 'wrong'}">
+          答：${q.answer ? '○（正しい）' : '×（誤り）'}
+        </div>
+        <div class="q-exp">${q.explanation}</div>
+      </div>
+    `).join('');
+
+    document.getElementById('step-preview').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  // GitHubにコミット
+  async function commitQuestions() {
+    if (extractedQuestions.length === 0) return;
+
+    const secret = document.getElementById('upload-secret').value;
+    const subcatFile = document.getElementById('subcat-file').value;
+    const workerUrl = localStorage.getItem('worker_url');
+    const statusEl = document.getElementById('commit-status');
+    const btn = document.getElementById('btn-commit');
+
+    btn.disabled = true;
+    statusEl.innerHTML = '<div class="status-box loading">📡 GitHubにコミット中…</div>';
+
+    try {
+      const res = await fetch(`${workerUrl}/commit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Upload-Secret': secret,
+        },
+        body: JSON.stringify({ questions: extractedQuestions, subcatFile })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Commit failed');
+      }
+
+      statusEl.innerHTML = `
+        <div class="status-box success">
+          ✅ ${data.added}問を登録しました！<br>
+          GitHub Pages に反映されるまで約5〜10分かかります。
+        </div>`;
+
+    } catch (err) {
+      statusEl.innerHTML = `<div class="status-box error">❌ ${err.message}</div>`;
+      btn.disabled = false;
+    }
+  }
+
+  function setExtracting(loading) {
+    document.getElementById('btn-extract').disabled = loading;
+    document.getElementById('extract-label').style.display = loading ? 'none' : 'inline';
+    document.getElementById('extract-spinner').style.display = loading ? 'inline-block' : 'none';
+  }
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+</script>
+</body>
+</html>

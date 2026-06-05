@@ -130,7 +130,7 @@ async function handleExtract(request, env) {
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-opus-4-5',
       max_tokens: 8192,
       messages: [{ role: 'user', content }]
     })
@@ -172,7 +172,7 @@ async function handleCommit(request, env) {
   const owner = env.GITHUB_OWNER;
   const repo  = env.GITHUB_REPO;
   const path  = `data/${subcatFile}.json`;
-  const token = env.GITHUB_TOKEN;
+  const token = (env.GITHUB_TOKEN || '').trim();
 
   // 既存ファイルを取得
   let existing = [];

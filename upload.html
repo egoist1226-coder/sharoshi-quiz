@@ -273,7 +273,8 @@
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Commit failed');
+        const detail = data.detail ? '\n詳細: ' + data.detail : '';
+        throw new Error((data.error || 'Commit failed') + detail);
       }
 
       statusEl.innerHTML = `

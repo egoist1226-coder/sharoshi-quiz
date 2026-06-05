@@ -9,120 +9,81 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type, X-Upload-Secret',
 };
 
-// 1枚送信時のプロンプト（問題・解説が同一ページ）
-const CLAUDE_PROMPT_SINGLE = `この画像は社労士試験の問題集のページです。
-ページに掲載されているすべての問題を抽出してください。
+// 1行あたりの文字数（問題集の仕様）
+const CHARS_PER_LINE = 36;
+
+// 文字数チェックの許容誤差（±30%）
+const CHAR_TOLERANCE = 0.30;
+
+// ===== プロンプト =====
+function buildPrompt(isTwoPage, retryNote = '') {
+  const base = isTwoPage
+    ? `2枚の画像は社労士試験の問題集です。1枚目が問題ページ、2枚目が解答・解説ページです。問題番号で対応させてすべての問題を抽出してください。`
+    : `この画像は社労士試験の問題集のページです。ページに掲載されているすべての問題を抽出してください。`;
+
+  const retrySection = retryNote
+    ? `\n\n【重要・再抽出指示】\n${retryNote}\n`
+    : '';
+
+  return `${base}${retrySection}
 
 抽出ルール：
 - 問題番号（数値）をidおよびsource_noに使う
-- 答の○はtrue、×はfalseとする
+- 問題文は問題集の原文を一字一句そのまま忠実に再現すること（修正・要約・補完は絶対にしない）
+- 答の○はtrue、×はfalseとする${isTwoPage ? '（解説ページの○×を参照）' : ''}
 - 解説中の赤文字・強調語は <span class="wrong-key">...</span> で囲む
 - 難問ラベルがある問題はdifficulty: "hard"、基礎ラベルはdifficulty: "easy"、それ以外はdifficulty: "normal"
 - categoryは問題のカテゴリ（例：障害厚生年金）
+- line_count: 画像上でその問題文が占める行数（句読点・スペース含む印刷行数）を正確に数える
 
 JSONのみを返すこと（説明文は不要）:
 [
   {
     "id": 数値,
+    "line_count": 整数,
     "category": "カテゴリ名",
-    "question": "問題文",
+    "question": "問題文（原文そのまま）",
     "answer": true,
     "explanation": "解説文（赤文字は<span class=\\"wrong-key\\">テキスト</span>で囲む）",
     "difficulty": "normal",
     "source_no": 数値
   }
 ]`;
+}
 
-// 2枚送信時のプロンプト（1枚目=問題ページ、2枚目=解説ページ）
-const CLAUDE_PROMPT_DOUBLE = `2枚の画像は社労士試験の問題集です。
-1枚目が問題ページ、2枚目が解答・解説ページです。
-問題番号で対応させて、すべての問題を抽出してください。
+// ===== 文字数バリデーション =====
+function validateCharCount(questions) {
+  const valid = [];
+  const invalid = [];
 
-抽出ルール：
-- 問題番号（数値）をidおよびsource_noに使う
-- 答の○はtrue、×はfalseとする（解説ページの○×を参照）
-- 解説中の赤文字・強調語は <span class="wrong-key">...</span> で囲む
-- 難問ラベルがある問題はdifficulty: "hard"、基礎ラベルはdifficulty: "easy"、それ以外はdifficulty: "normal"
-- categoryは問題のカテゴリ（例：障害厚生年金）
+  for (const q of questions) {
+    // line_countがない場合はスキップ（チェック不能）
+    if (!q.line_count || q.line_count <= 0) {
+      valid.push(q);
+      continue;
+    }
+    const expected  = q.line_count * CHARS_PER_LINE;
+    const actual    = q.question.length;
+    const ratio     = Math.abs(actual - expected) / expected;
 
-JSONのみを返すこと（説明文は不要）:
-[
-  {
-    "id": 数値,
-    "category": "カテゴリ名",
-    "question": "問題文",
-    "answer": true,
-    "explanation": "解説文（赤文字は<span class=\\"wrong-key\\">テキスト</span>で囲む）",
-    "difficulty": "normal",
-    "source_no": 数値
+    if (ratio > CHAR_TOLERANCE) {
+      invalid.push({
+        id: q.id,
+        expected,
+        actual,
+        ratio: Math.round(ratio * 100),
+        line_count: q.line_count,
+      });
+    } else {
+      valid.push(q);
+    }
   }
-]`;
+  return { valid, invalid };
+}
 
-export default {
-  async fetch(request, env) {
-    // CORS preflight
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: CORS_HEADERS });
-    }
-
-    if (request.method !== 'POST') {
-      return json({ error: 'Method not allowed' }, 405);
-    }
-
-    // 認証チェック（trim()で改行・空白を除去して比較）
-    const secret = (request.headers.get('X-Upload-Secret') || '').trim();
-    const storedSecret = (env.UPLOAD_SECRET || '').trim();
-    if (!storedSecret || secret !== storedSecret) {
-      return json({ error: 'Unauthorized' }, 401);
-    }
-
-    const url = new URL(request.url);
-
-    // ===== /extract: 画像から問題を抽出（コミットしない）=====
-    if (url.pathname === '/extract') {
-      return handleExtract(request, env);
-    }
-
-    // ===== /commit: 抽出済みJSONをGitHubにコミット =====
-    if (url.pathname === '/commit') {
-      return handleCommit(request, env);
-    }
-
-    return json({ error: 'Not found' }, 404);
-  }
-};
-
-// ===== 抽出処理（1枚 or 2枚対応）=====
-async function handleExtract(request, env) {
-  const body = await request.json();
-
-  // image: 1枚送信、imageQ+imageA: 2枚送信
-  const { image, mimeType, imageQ, imageA, mimeTypeQ, mimeTypeA } = body;
-  const isTwoPage = !!(imageQ && imageA);
-
-  if (!isTwoPage && !image) {
-    return json({ error: 'No image provided' }, 400);
-  }
-
-  // メッセージのcontentを組み立て
-  let content;
-  if (isTwoPage) {
-    // 2枚モード: 問題ページ→解説ページ→プロンプト
-    content = [
-      { type: 'image', source: { type: 'base64', media_type: mimeTypeQ || 'image/jpeg', data: imageQ } },
-      { type: 'image', source: { type: 'base64', media_type: mimeTypeA || 'image/jpeg', data: imageA } },
-      { type: 'text', text: CLAUDE_PROMPT_DOUBLE }
-    ];
-  } else {
-    // 1枚モード
-    content = [
-      { type: 'image', source: { type: 'base64', media_type: mimeType || 'image/jpeg', data: image } },
-      { type: 'text', text: CLAUDE_PROMPT_SINGLE }
-    ];
-  }
-
-  // Claude API呼び出し
-  const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+// ===== Claude API呼び出し =====
+async function callClaude(env, content) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -136,25 +97,130 @@ async function handleExtract(request, env) {
     })
   });
 
-  if (!claudeRes.ok) {
-    const err = await claudeRes.text();
-    return json({ error: 'Claude API error', status: claudeRes.status, detail: err }, 500);
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Claude API error ${res.status}: ${err}`);
   }
 
-  const claudeData = await claudeRes.json();
-  const text = claudeData.content[0].text;
-
+  const data = await res.json();
+  const text = data.content[0].text;
   const match = text.match(/\[[\s\S]*\]/);
-  if (!match) return json({ error: 'Could not parse questions from image', raw: text }, 500);
+  if (!match) throw new Error(`JSON not found in response: ${text.substring(0, 200)}`);
 
-  let questions;
-  try {
-    questions = JSON.parse(match[0]);
-  } catch (e) {
-    return json({ error: 'JSON parse error', raw: match[0] }, 500);
+  return JSON.parse(match[0]);
+}
+
+export default {
+  async fetch(request, env) {
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { headers: CORS_HEADERS });
+    }
+    if (request.method !== 'POST') {
+      return json({ error: 'Method not allowed' }, 405);
+    }
+
+    const secret = (request.headers.get('X-Upload-Secret') || '').trim();
+    const storedSecret = (env.UPLOAD_SECRET || '').trim();
+    if (!storedSecret || secret !== storedSecret) {
+      return json({ error: 'Unauthorized' }, 401);
+    }
+
+    const url = new URL(request.url);
+    if (url.pathname === '/extract') return handleExtract(request, env);
+    if (url.pathname === '/commit')  return handleCommit(request, env);
+    return json({ error: 'Not found' }, 404);
+  }
+};
+
+// ===== 抽出処理（文字数チェック＋リトライあり）=====
+async function handleExtract(request, env) {
+  const body = await request.json();
+  const { image, mimeType, imageQ, imageA, mimeTypeQ, mimeTypeA } = body;
+  const isTwoPage = !!(imageQ && imageA);
+
+  if (!isTwoPage && !image) {
+    return json({ error: 'No image provided' }, 400);
   }
 
-  return json({ success: true, questions });
+  // 画像contentを構築する関数
+  const buildContent = (retryNote = '') => {
+    const prompt = buildPrompt(isTwoPage, retryNote);
+    if (isTwoPage) {
+      return [
+        { type: 'image', source: { type: 'base64', media_type: mimeTypeQ || 'image/jpeg', data: imageQ } },
+        { type: 'image', source: { type: 'base64', media_type: mimeTypeA || 'image/jpeg', data: imageA } },
+        { type: 'text', text: prompt }
+      ];
+    }
+    return [
+      { type: 'image', source: { type: 'base64', media_type: mimeType || 'image/jpeg', data: image } },
+      { type: 'text', text: prompt }
+    ];
+  };
+
+  const MAX_RETRIES = 2;
+  let allQuestions = [];
+  const validationLog = [];
+
+  try {
+    // ===== 第1回抽出 =====
+    let questions = await callClaude(env, buildContent());
+    const { valid, invalid } = validateCharCount(questions);
+
+    allQuestions = valid;
+    validationLog.push({
+      attempt: 1,
+      total: questions.length,
+      passed: valid.length,
+      failed: invalid,
+    });
+
+    // ===== リトライ（最大MAX_RETRIES回）=====
+    let remaining = invalid;
+    for (let attempt = 2; attempt <= MAX_RETRIES + 1 && remaining.length > 0; attempt++) {
+      const retryNote = remaining.map(f =>
+        `問題ID ${f.id}：行数=${f.line_count}、期待文字数=約${f.expected}字、` +
+        `前回抽出=${f.actual}字（誤差${f.ratio}%）。原文を正確に読み直してください。`
+      ).join('\n');
+
+      const retried = await callClaude(env, buildContent(retryNote));
+
+      // リトライ対象IDのみ再チェック
+      const retryIds = new Set(remaining.map(r => r.id));
+      const retryQuestions = retried.filter(q => retryIds.has(q.id));
+      const { valid: rv, invalid: ri } = validateCharCount(retryQuestions);
+
+      allQuestions.push(...rv);
+      validationLog.push({
+        attempt,
+        retried: retryIds.size,
+        passed: rv.length,
+        failed: ri,
+      });
+
+      remaining = ri;
+    }
+
+    // 最終的に検証失敗したものも含める（最善努力）
+    if (remaining.length > 0) {
+      // 最後のリトライ結果から取得
+      const lastRetried = await callClaude(env, buildContent());
+      const lastIds = new Set(remaining.map(r => r.id));
+      allQuestions.push(...lastRetried.filter(q => lastIds.has(q.id)));
+    }
+
+    // line_count フィールドを削除（DBには不要）
+    const output = allQuestions.map(({ line_count, ...q }) => q);
+
+    return json({
+      success: true,
+      questions: output,
+      validation: validationLog,
+    });
+
+  } catch (e) {
+    return json({ error: e.message }, 500);
+  }
 }
 
 // ===== コミット処理 =====
@@ -166,7 +232,7 @@ async function handleCommit(request, env) {
     return json({ error: 'No questions provided' }, 400);
   }
   if (!subcatFile) {
-    return json({ error: 'subcatFile is required (e.g. kousei_nenkin_10)' }, 400);
+    return json({ error: 'subcatFile is required' }, 400);
   }
 
   const owner = env.GITHUB_OWNER;
@@ -174,9 +240,8 @@ async function handleCommit(request, env) {
   const path  = `data/${subcatFile}.json`;
   const token = (env.GITHUB_TOKEN || '').trim();
 
-  // 既存ファイルを取得
   let existing = [];
-  let fileSha   = null;
+  let fileSha  = null;
 
   const getRes = await fetch(
     `https://api.github.com/repos/${owner}/${repo}/contents/${path}`,
@@ -189,17 +254,15 @@ async function handleCommit(request, env) {
     existing = JSON.parse(decodeBase64Utf8(fileData.content));
   }
 
-  // 重複IDをスキップして追記
   const existingIds = new Set(existing.map(q => q.id));
   const toAdd = questions.filter(q => !existingIds.has(q.id));
   if (toAdd.length === 0) {
     return json({ success: true, added: 0, message: 'All questions already exist' });
   }
 
-  const updated = [...existing, ...toAdd];
+  const updated    = [...existing, ...toAdd];
   const newContent = encodeBase64Utf8(JSON.stringify(updated, null, 2));
 
-  // GitHubにコミット
   const putRes = await fetch(
     `https://api.github.com/repos/${owner}/${repo}/contents/${path}`,
     {
@@ -232,13 +295,6 @@ function json(data, status = 200) {
     status,
     headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
   });
-}
-
-function arrayBufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary);
 }
 
 function decodeBase64Utf8(str) {

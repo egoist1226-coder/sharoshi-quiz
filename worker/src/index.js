@@ -12,8 +12,11 @@ const CORS_HEADERS = {
 // 1行あたりの文字数（問題集の仕様）
 const CHARS_PER_LINE = 36;
 
-// 文字数チェックの許容誤差（±30%）
-const CHAR_TOLERANCE = 0.30;
+// 文字数チェックの許容範囲（非対称）
+// 上限：期待値の1.05倍まで（最終行満杯＋わずかな誤差）
+// 下限：期待値の0.80倍まで（最終行が約7文字でも許容）
+const CHAR_UPPER = 1.05;
+const CHAR_LOWER = 0.80;
 
 // ===== プロンプト =====
 function buildPrompt(isTwoPage, retryNote = '') {
@@ -62,16 +65,19 @@ function validateCharCount(questions) {
       valid.push(q);
       continue;
     }
-    const expected  = q.line_count * CHARS_PER_LINE;
-    const actual    = q.question.length;
-    const ratio     = Math.abs(actual - expected) / expected;
+    const expected = q.line_count * CHARS_PER_LINE;
+    const actual   = q.question.length;
+    const lower    = expected * CHAR_LOWER;
+    const upper    = expected * CHAR_UPPER;
 
-    if (ratio > CHAR_TOLERANCE) {
+    if (actual < lower || actual > upper) {
       invalid.push({
         id: q.id,
         expected,
         actual,
-        ratio: Math.round(ratio * 100),
+        lower: Math.round(lower),
+        upper: Math.round(upper),
+        diff: actual - expected,
         line_count: q.line_count,
       });
     } else {
@@ -179,8 +185,9 @@ async function handleExtract(request, env) {
     let remaining = invalid;
     for (let attempt = 2; attempt <= MAX_RETRIES + 1 && remaining.length > 0; attempt++) {
       const retryNote = remaining.map(f =>
-        `問題ID ${f.id}：行数=${f.line_count}、期待文字数=約${f.expected}字、` +
-        `前回抽出=${f.actual}字（誤差${f.ratio}%）。原文を正確に読み直してください。`
+        `問題ID ${f.id}：行数=${f.line_count}行、許容範囲=${f.lower}〜${f.upper}字、` +
+        `前回抽出=${f.actual}字（${f.diff > 0 ? '多' : '少'}すぎ）。` +
+        `問題文を一字一句そのまま正確に読み直してください。`
       ).join('\n');
 
       const retried = await callClaude(env, buildContent(retryNote));

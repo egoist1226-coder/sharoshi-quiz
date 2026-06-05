@@ -128,13 +128,15 @@
 
 <script>
   let extractedQuestions = [];
+  // 回転補正済みファイルを変数で管理（file inputから再読み込みしない）
+  let fixedFileQ = null;
+  let fixedFileA = null;
 
   // ===== 初期化：保存済みの値を復元 =====
   window.addEventListener('DOMContentLoaded', () => {
     const savedSecret = localStorage.getItem('upload_secret');
     if (savedSecret) document.getElementById('upload-secret').value = savedSecret;
 
-    // Worker URL未設定なら入力欄を追加
     if (!localStorage.getItem('worker_url')) {
       document.querySelector('.upload-page').insertAdjacentHTML('afterbegin', `
         <div class="upload-section" style="background:#fff3cd">
@@ -155,46 +157,37 @@
     location.reload();
   }
 
-  // ===== EXIF回転補正 =====
-  async function getExifOrientation(file) {
-    try {
-      const buf = await file.slice(0, 65536).arrayBuffer();
-      const view = new DataView(buf);
-      if (view.getUint16(0, false) !== 0xFFD8) return 1;
-      let offset = 2;
-      while (offset < buf.byteLength) {
-        const marker = view.getUint16(offset, false);
-        offset += 2;
-        if (marker === 0xFFE1) {
-          if (view.getUint32(offset + 2, false) !== 0x45786966) break;
-          const le = view.getUint16(offset + 8, false) === 0x4949;
-          const tags = view.getUint16(offset + 10, le);
-          offset += 12;
-          for (let i = 0; i < tags; i++) {
-            if (view.getUint16(offset + i * 12, le) === 0x0112)
-              return view.getUint16(offset + i * 12 + 8, le);
-          }
-        } else if ((marker & 0xFF00) !== 0xFF00) break;
-        else offset += view.getUint16(offset, false);
-      }
-    } catch (e) {}
-    return 1;
-  }
-
+  // ===== EXIF回転補正（正しい実装）=====
   async function fixOrientation(file) {
-    const orientation = await getExifOrientation(file);
+    // ① createImageBitmap で自動補正（モダンブラウザ向け）
+    try {
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      const canvas = document.createElement('canvas');
+      canvas.width  = bitmap.width;
+      canvas.height = bitmap.height;
+      canvas.getContext('2d').drawImage(bitmap, 0, 0);
+      bitmap.close();
+      return await new Promise(resolve =>
+        canvas.toBlob(blob => resolve(new File([blob], file.name, { type: 'image/jpeg' })), 'image/jpeg', 0.92)
+      );
+    } catch(_) {}
+
+    // ② 手動EXIFフォールバック
+    const orientation = await readExifOrientation(file);
     if (orientation <= 1) return file;
     return new Promise(resolve => {
       const img = new Image();
       img.onload = () => {
-        const w = img.width, h = img.height;
+        const w = img.naturalWidth, h = img.naturalHeight;
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        if (orientation > 4) { canvas.width = h; canvas.height = w; }
-        else                  { canvas.width = w; canvas.height = h; }
-        const t = { 2:[-1,0,0,1,w,0], 3:[-1,0,0,-1,w,h], 4:[1,0,0,-1,0,h],
-                    5:[0,1,1,0,0,0],  6:[0,1,-1,0,h,0],  7:[0,-1,-1,0,h,w], 8:[0,-1,1,0,0,w] };
-        if (t[orientation]) ctx.transform(...t[orientation]);
+        if ([5,6,7,8].includes(orientation)) { canvas.width = h; canvas.height = w; }
+        else                                  { canvas.width = w; canvas.height = h; }
+        const T = {
+          2:[-1,0,0,1,w,0], 3:[-1,0,0,-1,w,h], 4:[1,0,0,-1,0,h],
+          5:[0,1,1,0,0,0],  6:[0,1,-1,0,h,0],  7:[0,-1,-1,0,h,w], 8:[0,-1,1,0,0,w]
+        };
+        if (T[orientation]) ctx.transform(...T[orientation]);
         ctx.drawImage(img, 0, 0);
         canvas.toBlob(blob => resolve(new File([blob], file.name, { type: 'image/jpeg' })), 'image/jpeg', 0.92);
       };
@@ -202,56 +195,81 @@
     });
   }
 
+  async function readExifOrientation(file) {
+    try {
+      const buf  = await file.slice(0, 65536).arrayBuffer();
+      const view = new DataView(buf);
+      if (view.getUint16(0, false) !== 0xFFD8) return 1; // JPEGでない
+      let offset = 2;
+      while (offset < buf.byteLength - 4) {
+        const marker = view.getUint16(offset, false);
+        const segLen  = view.getUint16(offset + 2, false); // セグメント長
+        if (marker === 0xFFE1) { // APP1
+          // "Exif\0\0" チェック (offset+4 から6バイト)
+          if (view.getUint32(offset + 4, false) === 0x45786966) {
+            const tiff = offset + 10; // TIFFヘッダ開始
+            const le   = view.getUint16(tiff, false) === 0x4949;
+            const ifd0 = tiff + view.getUint32(tiff + 4, le); // IFD0の絶対位置
+            const nTags = view.getUint16(ifd0, le);
+            for (let i = 0; i < nTags; i++) {
+              const e = ifd0 + 2 + i * 12;
+              if (view.getUint16(e, le) === 0x0112) { // Orientationタグ
+                return view.getUint16(e + 8, le);
+              }
+            }
+          }
+        } else if (marker === 0xFFDA || marker === 0xFFD9) break; // SOS / EOI
+        offset += 2 + segLen;
+      }
+    } catch(_) {}
+    return 1;
+  }
+
   // ===== ファイル選択＋プレビュー =====
-  function setupFileInput(inputId, previewId) {
+  function setupFileInput(inputId, previewId, isQ) {
     document.getElementById(inputId).addEventListener('change', async function(e) {
-      let file = e.target.files[0];
-      if (!file) return;
-      file = await fixOrientation(file);
-      // 補正後ファイルをDataTransferで差し替え
-      try {
-        const dt = new DataTransfer();
-        dt.items.add(file);
-        e.target.files = dt.files;
-      } catch(_) {}
+      const raw = e.target.files[0];
+      if (!raw) return;
+      const fixed = await fixOrientation(raw);
+      // 補正済みファイルを変数に保存（アップロード時はこちらを使う）
+      if (isQ) { fixedFileQ = fixed; document.getElementById('btn-extract').disabled = false; }
+      else       fixedFileA = fixed;
+      // プレビュー表示
       const reader = new FileReader();
       reader.onload = ev => {
         const img = document.getElementById(previewId);
         img.src = ev.target.result;
         img.style.display = 'block';
-        if (inputId === 'file-input-q')
-          document.getElementById('btn-extract').disabled = false;
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(fixed);
     });
   }
-  setupFileInput('file-input-q', 'preview-img-q');
-  setupFileInput('file-input-a', 'preview-img-a');
+  setupFileInput('file-input-q', 'preview-img-q', true);
+  setupFileInput('file-input-a', 'preview-img-a', false);
 
   // ===== 問題抽出 =====
   async function extractQuestions() {
-    const fileQ = document.getElementById('file-input-q').files[0];
-    const fileA = document.getElementById('file-input-a').files[0];
-    const secret = document.getElementById('upload-secret').value.trim();
+    // file inputではなく補正済み変数を使う
+    const fileQ = fixedFileQ;
+    const fileA = fixedFileA;
+    const secret    = document.getElementById('upload-secret').value.trim();
     const workerUrl = (localStorage.getItem('worker_url') || '').trim();
 
-    if (!fileQ)      return alert('問題ページの写真を選択してください');
-    if (!secret)     return alert('認証コードを入力してください');
-    if (!workerUrl)  return alert('Worker URLを設定してください');
+    if (!fileQ)     return alert('問題ページの写真を選択してください');
+    if (!secret)    return alert('認証コードを入力してください');
+    if (!workerUrl) return alert('Worker URLを設定してください');
 
-    // 認証コードを保存（次回省略）
     localStorage.setItem('upload_secret', secret);
-
     setExtracting(true);
     try {
       let body;
       if (fileA) {
         const [b64Q, b64A] = await Promise.all([fileToBase64(fileQ), fileToBase64(fileA)]);
-        body = { imageQ: b64Q.split(',')[1], mimeTypeQ: fileQ.type || 'image/jpeg',
-                 imageA: b64A.split(',')[1], mimeTypeA: fileA.type || 'image/jpeg' };
+        body = { imageQ: b64Q.split(',')[1], mimeTypeQ: 'image/jpeg',
+                 imageA: b64A.split(',')[1], mimeTypeA: 'image/jpeg' };
       } else {
         const b64 = await fileToBase64(fileQ);
-        body = { image: b64.split(',')[1], mimeType: fileQ.type || 'image/jpeg' };
+        body = { image: b64.split(',')[1], mimeType: 'image/jpeg' };
       }
 
       const res = await fetch(`${workerUrl}/extract`, {
@@ -260,15 +278,11 @@
         body: JSON.stringify(body)
       });
 
-      // ステータスコード確認
-      if (res.status === 401) {
-        throw new Error(`認証エラー(401)。認証コードを確認してください。現在の値: "${secret}"`);
-      }
+      if (res.status === 401) throw new Error(`認証エラー(401)。認証コード: "${secret}"`);
 
       const data = await res.json();
-      if (!res.ok || !data.success) {
+      if (!res.ok || !data.success)
         throw new Error((data.error || 'Extraction failed') + (data.detail ? '\n' + data.detail : ''));
-      }
 
       extractedQuestions = data.questions;
       showPreview(extractedQuestions);

@@ -481,7 +481,7 @@
     { file: 'kousei_nenkin_03', label: '3. 標準報酬月額及び標準賞与額', count: 27, idRange: [70,  96]  },
     { file: 'kousei_nenkin_04', label: '4. 届出・記録等',        count: 44, idRange: [97,  140] },
     { file: 'kousei_nenkin_09', label: '9. 老齢厚生年金',        count: 45, idRange: [216, 260] },
-    { file: 'kousei_nenkin_10', label: '10. 障害厚生年金',       count: 11, idRange: [261, 400] },
+    { file: 'kousei_nenkin_10', label: '10. 障害厚生年金',       count: 29, idRange: [261, 400] },
   ];
 
   // サブカテゴリの正答率を計算（未演習はnullを返す）
@@ -536,14 +536,19 @@
     const subcatList = document.getElementById('modal-subcat-list');
     if (subject === 'kousei_nenkin') {
       subcatSection.classList.remove('hidden');
+      // 実際の問題数をストレージから計算（写真登録で増えても自動反映）
+      const all = QuizAPI.loadStorage();
       subcatList.innerHTML = KOUSEI_NENKIN_SUBCATS.map(sc => {
         const acc = getSubcatAccuracy('kousei_nenkin', sc.file, sc.idRange[0], sc.idRange[1]);
         const accHtml = acc !== null
           ? `<span class="subcat-btn-accuracy">正答率${acc}%</span>`
           : '';
+        // サブカテゴリキーの問題数 or 定義値を使用
+        const subcatQCount = Object.keys(all[sc.file]?.questions || {}).length;
+        const displayCount = subcatQCount > 0 ? subcatQCount : sc.count;
         return `<button class="subcat-btn" onclick="startSubcatQuiz('${sc.file}')">
           <span class="subcat-btn-label">${sc.label}${accHtml}</span>
-          <span class="subcat-btn-count">${sc.count}問 ›</span>
+          <span class="subcat-btn-count">${displayCount}問 ›</span>
         </button>`;
       }).join('');
     } else {

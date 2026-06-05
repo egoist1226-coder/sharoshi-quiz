@@ -12,11 +12,10 @@ const CORS_HEADERS = {
 // 1行あたりの文字数（問題集の仕様）
 const CHARS_PER_LINE = 36;
 
-// 文字数チェックの許容範囲（非対称）
-// 上限：期待値の1.05倍まで（最終行満杯＋わずかな誤差）
-// 下限：期待値の0.80倍まで（最終行が約7文字でも許容）
-const CHAR_UPPER = 1.05;
-const CHAR_LOWER = 0.80;
+// 文字数チェック（行数から厳密に算出）
+// 有効範囲: (line_count-1)×36+1 ≤ actual ≤ line_count×36
+// ＋OCR誤差の許容バッファ（±5文字）
+const CHAR_BUFFER = 5;
 
 // ===== プロンプト =====
 function buildPrompt(isTwoPage, retryNote = '') {
@@ -65,20 +64,20 @@ function validateCharCount(questions) {
       valid.push(q);
       continue;
     }
-    const expected = q.line_count * CHARS_PER_LINE;
-    const actual   = q.question.length;
-    const lower    = expected * CHAR_LOWER;
-    const upper    = expected * CHAR_UPPER;
+    const n      = q.line_count;
+    const actual = q.question.length;
+    // 理論範囲: (n-1)*36+1 ～ n*36
+    const lower  = (n - 1) * CHARS_PER_LINE + 1 - CHAR_BUFFER;
+    const upper  = n * CHARS_PER_LINE + CHAR_BUFFER;
 
     if (actual < lower || actual > upper) {
       invalid.push({
         id: q.id,
-        expected,
+        line_count: n,
+        lower,
+        upper,
         actual,
-        lower: Math.round(lower),
-        upper: Math.round(upper),
-        diff: actual - expected,
-        line_count: q.line_count,
+        diff: actual - n * CHARS_PER_LINE,
       });
     } else {
       valid.push(q);

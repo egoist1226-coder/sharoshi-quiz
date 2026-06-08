@@ -476,12 +476,14 @@
 
   // 厚生年金保険法のサブカテゴリ定義（idRange: [min, max] で正答率集計に使用）
   const KOUSEI_NENKIN_SUBCATS = [
-    { file: 'kousei_nenkin_01', label: '1. 総則',              count: 6,  idRange: [1,   6]   },
-    { file: 'kousei_nenkin_02', label: '2. 被保険者',           count: 63, idRange: [7,   69]  },
+    { file: 'kousei_nenkin_01', label: '1. 総則',                    count: 6,  idRange: [1,   6]   },
+    { file: 'kousei_nenkin_02', label: '2. 被保険者',                 count: 63, idRange: [7,   69]  },
     { file: 'kousei_nenkin_03', label: '3. 標準報酬月額及び標準賞与額', count: 27, idRange: [70,  96]  },
-    { file: 'kousei_nenkin_04', label: '4. 届出・記録等',        count: 44, idRange: [97,  140] },
-    { file: 'kousei_nenkin_09', label: '9. 老齢厚生年金',        count: 45, idRange: [216, 260] },
-    { file: 'kousei_nenkin_10', label: '10. 障害厚生年金',       count: 46, idRange: [261, 400] },
+    { file: 'kousei_nenkin_04', label: '4. 届出・記録等',              count: 44, idRange: [97,  140] },
+    { file: 'kousei_nenkin_09', label: '9. 老齢厚生年金',              count: 45, idRange: [216, 260] },
+    { file: 'kousei_nenkin_10', label: '10. 障害厚生年金',             count: 46, idRange: [261, 306] },
+    { file: 'kousei_nenkin_11', label: '11. 障害手当金',               count: 9,  idRange: [307, 315] },
+    { file: 'kousei_nenkin_12', label: '12. 遺族厚生年金',             count: 9,  idRange: [316, 400] },
   ];
 
   // サブカテゴリの正答率を計算（未演習はnullを返す）

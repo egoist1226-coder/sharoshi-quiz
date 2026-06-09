@@ -61,6 +61,16 @@
     .status-box.loading { background: #ede9fe; color: #4338ca; }
     .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; margin-left: 6px; }
     .badge-count { background: #e0e7ff; color: #4338ca; }
+    .badge-warn  { background: #fef3c7; color: #92400e; }
+    /* 要確認カード */
+    .q-card.review-needed { background: #fffbeb; border: 2px solid #f59e0b; }
+    .q-card.review-needed .q-id { color: #b45309; }
+    .review-badge { display: inline-block; background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; border-radius: 4px; font-size: 11px; font-weight: 700; padding: 1px 6px; margin-left: 6px; }
+    .review-info  { background: #fef9c3; border-left: 3px solid #f59e0b; padding: 6px 8px; margin-top: 6px; font-size: 11px; color: #78350f; line-height: 1.5; }
+    .review-input { width: 100%; padding: 8px; border: 1px solid #f59e0b; border-radius: 6px; font-size: 13px; line-height: 1.6; margin-top: 6px; resize: vertical; min-height: 60px; box-sizing: border-box; }
+    .review-save  { width: 100%; padding: 7px; background: #d97706; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; margin-top: 4px; }
+    .review-save:active { background: #b45309; }
+    .review-warn-box { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #78350f; font-weight: 600; margin-bottom: 10px; }
   </style>
 </head>
 <body>
@@ -136,7 +146,9 @@
     <div class="upload-title">
       ③ 抽出結果を確認
       <span class="badge badge-count" id="q-count">0問</span>
+      <span class="badge badge-warn" id="review-count" style="display:none">⚠️ 0要確認</span>
     </div>
+    <div id="review-warn-box" class="review-warn-box" style="display:none"></div>
     <div id="preview-list"></div>
     <button class="btn-commit" id="btn-commit" onclick="commitQuestions()">
       ✅ GitHubに登録する
@@ -333,21 +345,87 @@
   // プレビュー表示
   function showPreview(questions) {
     document.getElementById('step-preview').style.display = 'block';
+
+    const reviewCount = questions.filter(q => q.review_needed).length;
     document.getElementById('q-count').textContent = `${questions.length}問`;
 
+    // 要確認バッジ・警告ボックス
+    const reviewBadge = document.getElementById('review-count');
+    const warnBox     = document.getElementById('review-warn-box');
+    const commitBtn   = document.getElementById('btn-commit');
+    if (reviewCount > 0) {
+      reviewBadge.textContent = `⚠️ ${reviewCount}要確認`;
+      reviewBadge.style.display = 'inline-block';
+      warnBox.style.display = 'block';
+      warnBox.textContent =
+        `⚠️ ${reviewCount}問の問題文が文字数チェックを通過できませんでした。` +
+        `黄色の問題の「問題文」欄を原文と照合し、手動で修正してから登録してください。` +
+        `修正が完了するまで登録ボタンは押せません。`;
+      commitBtn.disabled = true;
+    } else {
+      reviewBadge.style.display = 'none';
+      warnBox.style.display = 'none';
+      commitBtn.disabled = false;
+    }
+
     const list = document.getElementById('preview-list');
-    list.innerHTML = questions.map(q => `
-      <div class="q-card">
-        <div class="q-id">問${q.id}（${q.category}）</div>
-        <div class="q-text">${q.question}</div>
-        <div class="q-answer ${q.answer ? '' : 'wrong'}">
-          答：${q.answer ? '○（正しい）' : '×（誤り）'}
+    list.innerHTML = questions.map((q, idx) => {
+      const isReview = !!q.review_needed;
+      const cardClass = isReview ? 'q-card review-needed' : 'q-card';
+      const reviewBadgeHtml = isReview ? `<span class="review-badge">⚠️ 要確認</span>` : '';
+      const reviewInfoHtml  = isReview
+        ? `<div class="review-info">📏 ${q.review_info || '文字数チェック失敗'}<br>問題文を原文と照合して修正してください。</div>
+           <textarea class="review-input" id="review-text-${idx}" rows="4">${q.question}</textarea>
+           <button class="review-save" onclick="saveReviewEdit(${idx})">✅ この問題文で確定する</button>`
+        : '';
+      return `
+        <div class="q-card ${isReview ? 'review-needed' : ''}" id="qcard-${idx}">
+          <div class="q-id">問${q.id}（${q.category}）${reviewBadgeHtml}</div>
+          <div class="q-text" id="qtext-${idx}">${q.question}</div>
+          <div class="q-answer ${q.answer ? '' : 'wrong'}">
+            答：${q.answer ? '○（正しい）' : '×（誤り）'}
+          </div>
+          <div class="q-exp">${q.explanation}</div>
+          ${reviewInfoHtml}
         </div>
-        <div class="q-exp">${q.explanation}</div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
     document.getElementById('step-preview').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  // 要確認問題の問題文を手動修正して確定
+  function saveReviewEdit(idx) {
+    const textarea = document.getElementById(`review-text-${idx}`);
+    const newText  = textarea.value.trim();
+    if (!newText) return alert('問題文を入力してください');
+
+    // extractedQuestions の該当エントリを更新
+    extractedQuestions[idx].question      = newText;
+    extractedQuestions[idx].review_needed = false;
+    delete extractedQuestions[idx].review_info;
+
+    // カードを通常表示に切り替え
+    const card = document.getElementById(`qcard-${idx}`);
+    card.classList.remove('review-needed');
+    document.getElementById(`qtext-${idx}`).textContent = newText;
+    // textarea・保存ボタン・review-info を非表示化
+    card.querySelectorAll('.review-input, .review-save, .review-info, .review-badge').forEach(el => el.remove());
+
+    // 残り要確認数を再カウントしてバッジ・ボタン更新
+    const remaining = extractedQuestions.filter(q => q.review_needed).length;
+    const reviewBadge = document.getElementById('review-count');
+    const warnBox     = document.getElementById('review-warn-box');
+    const commitBtn   = document.getElementById('btn-commit');
+    if (remaining > 0) {
+      reviewBadge.textContent = `⚠️ ${remaining}要確認`;
+      warnBox.textContent =
+        `⚠️ あと${remaining}問の確認が残っています。修正が完了するまで登録できません。`;
+    } else {
+      reviewBadge.style.display = 'none';
+      warnBox.style.display = 'none';
+      commitBtn.disabled = false;
+    }
   }
 
   // GitHubにコミット

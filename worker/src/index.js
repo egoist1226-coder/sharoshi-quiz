@@ -12,10 +12,9 @@ const CORS_HEADERS = {
 // 1行あたりの文字数（問題集の仕様）
 const CHARS_PER_LINE = 36;
 
-// 文字数チェック（行数から厳密に算出）
-// 有効範囲: (line_count-1)×36+1 ≤ actual ≤ line_count×36
-// ＋OCR誤差の許容バッファ（±5文字）
-const CHAR_BUFFER = 5;
+// 文字数チェックのバッファ（±3文字）
+// last_line_pos（1〜36の確定位置）を使うため厳格化
+const CHAR_BUFFER = 3;
 
 // ===== プロンプト =====
 function buildPrompt(isTwoPage, retryNote = '') {
@@ -31,20 +30,20 @@ function buildPrompt(isTwoPage, retryNote = '') {
 
 抽出ルール：
 - 問題番号（数値）をidおよびsource_noに使う
-- 問題文は問題集の原文を一字一句そのまま忠実に再現すること（修正・要約・補完は絶対にしない）
+- 問題文は問題集の原文を一字一句そのまま忠実に再現すること（修正・要約・補完・言い換えは絶対にしない）
 - 答の○はtrue、×はfalseとする${isTwoPage ? '（解説ページの○×を参照）' : ''}
 - 解説中の赤文字・強調語は <span class="wrong-key">...</span> で囲む
 - 難問ラベルがある問題はdifficulty: "hard"、基礎ラベルはdifficulty: "easy"、それ以外はdifficulty: "normal"
 - categoryは問題のカテゴリ（例：障害厚生年金）
 - line_count: 画像上でその問題文が占める行数（句読点・スペース含む印刷行数）を正確に数える
-- last_line_half: 最終行の末尾文字の位置。1行36文字のうち左半分（1〜18文字目）で終わる場合は "left"、右半分（19〜36文字目）で終わる場合は "right"
+- last_line_pos: 最終行において最後の文字が左から何文字目（1〜36）に位置するかを整数で記録する（例：最終行が15文字で終わっていれば 15、36文字ちょうど埋まっていれば 36）
 
 JSONのみを返すこと（説明文は不要）:
 [
   {
     "id": 数値,
     "line_count": 整数,
-    "last_line_half": "left" または "right",
+    "last_line_pos": 整数（1〜36）,
     "category": "カテゴリ名",
     "question": "問題文（原文そのまま）",
     "answer": true,
@@ -66,40 +65,60 @@ function validateCharCount(questions) {
       valid.push(q);
       continue;
     }
-    const n    = q.line_count;
-    const half = q.last_line_half; // "left"(1-18) or "right"(19-36)
-    const base = (n - 1) * CHARS_PER_LINE;
+    const n   = q.line_count;
+    const pos = q.last_line_pos; // 1〜36の整数
+    const base   = (n - 1) * CHARS_PER_LINE;
     const actual = q.question.length;
 
-    // last_line_half で最終行の位置を特定し範囲を±18字に絞る
-    let lower, upper;
-    if (half === 'left') {
-      lower = base + 1  - CHAR_BUFFER;  // 最終行 1〜18字
-      upper = base + 18 + CHAR_BUFFER;
-    } else if (half === 'right') {
-      lower = base + 19 - CHAR_BUFFER;  // 最終行 19〜36字
-      upper = base + 36 + CHAR_BUFFER;
+    let lower, upper, expected;
+    if (pos && pos >= 1 && pos <= 36) {
+      // 案A: last_line_posで確定した期待値に±バッファ
+      expected = base + pos;
+      lower    = expected - CHAR_BUFFER;
+      upper    = expected + CHAR_BUFFER;
     } else {
-      // last_line_half 未取得時は従来の全範囲（1〜36字）
-      lower = base + 1  - CHAR_BUFFER;
-      upper = base + 36 + CHAR_BUFFER;
+      // last_line_pos 未取得時は従来の全範囲（1〜36字）＋バッファ5
+      expected = base + 18; // 中央値
+      lower    = base + 1  - 5;
+      upper    = base + 36 + 5;
     }
 
     if (actual < lower || actual > upper) {
       invalid.push({
         id: q.id,
         line_count: n,
-        last_line_half: half,
+        last_line_pos: pos,
+        expected,
         lower,
         upper,
         actual,
-        diff: actual - (base + (half === 'left' ? 9 : 27)), // 中央値との差
+        diff: actual - expected,
       });
     } else {
       valid.push(q);
     }
   }
   return { valid, invalid };
+}
+
+// ===== リトライ指示文生成（案C: 具体的なヒント付き）=====
+function buildRetryNote(failures) {
+  return failures.map(f => {
+    const absDiff = Math.abs(f.diff);
+    const direction = f.diff > 0 ? '多い' : '少ない';
+    const hint = f.diff > 0
+      ? `問題文に余分な文字（送り仮名の重複・句読点の挿入・スペースの混入・不要な括弧など）が混入している可能性があります。` +
+        `特に問題文の後半部分（${f.line_count}行目付近）を一字一句見直してください。`
+      : `問題文の一部が欠落している可能性があります。` +
+        `特に文末付近（${f.line_count}行目）が途中で切れていないか、最後まで読み切れているか確認してください。`;
+    return (
+      `問題ID ${f.id}：` +
+      `行数=${f.line_count}行・最終行位置=${f.last_line_pos ?? '未取得'}文字目、` +
+      `想定文字数=${f.expected}字（許容=${f.lower}〜${f.upper}字）、` +
+      `前回抽出=${f.actual}字（約${absDiff}字${direction}）。` +
+      hint
+    );
+  }).join('\n');
 }
 
 // ===== Claude API呼び出し =====
@@ -199,12 +218,7 @@ async function handleExtract(request, env) {
     // ===== リトライ（最大MAX_RETRIES回）=====
     let remaining = invalid;
     for (let attempt = 2; attempt <= MAX_RETRIES + 1 && remaining.length > 0; attempt++) {
-      const retryNote = remaining.map(f =>
-        `問題ID ${f.id}：行数=${f.line_count}行、許容範囲=${f.lower}〜${f.upper}字、` +
-        `前回抽出=${f.actual}字（${f.diff > 0 ? '多' : '少'}すぎ）。` +
-        `問題文を一字一句そのまま正確に読み直してください。`
-      ).join('\n');
-
+      const retryNote = buildRetryNote(remaining); // 案C: 具体的な指示
       const retried = await callClaude(env, buildContent(retryNote));
 
       // リトライ対象IDのみ再チェック
@@ -223,21 +237,35 @@ async function handleExtract(request, env) {
       remaining = ri;
     }
 
-    // 最終的に検証失敗したものも含める（最善努力）
+    // ===== 案B: 最終的に検証失敗した問題は review_needed フラグ付きで返却 =====
+    // （無条件採用せず、UIで要確認表示・コミットブロック）
     if (remaining.length > 0) {
-      // 最後のリトライ結果から取得
-      const lastRetried = await callClaude(env, buildContent());
+      const lastRetryNote = buildRetryNote(remaining);
+      const lastRetried = await callClaude(env, buildContent(lastRetryNote));
       const lastIds = new Set(remaining.map(r => r.id));
-      allQuestions.push(...lastRetried.filter(q => lastIds.has(q.id)));
+      const flagged = lastRetried
+        .filter(q => lastIds.has(q.id))
+        .map(q => ({
+          ...q,
+          review_needed: true,
+          review_info: (() => {
+            const f = remaining.find(r => r.id === q.id);
+            return f
+              ? `文字数不一致: 抽出=${f.actual}字、想定=${f.expected}字（許容${f.lower}〜${f.upper}字）`
+              : '文字数チェック失敗';
+          })(),
+        }));
+      allQuestions.push(...flagged);
     }
 
     // 検証用フィールドを削除（DBには不要）
-    const output = allQuestions.map(({ line_count, last_line_half, ...q }) => q);
+    const output = allQuestions.map(({ line_count, last_line_pos, ...q }) => q);
 
     return json({
       success: true,
       questions: output,
       validation: validationLog,
+      review_count: output.filter(q => q.review_needed).length,
     });
 
   } catch (e) {
@@ -255,6 +283,15 @@ async function handleCommit(request, env) {
   }
   if (!subcatFile) {
     return json({ error: 'subcatFile is required' }, 400);
+  }
+
+  // 案B: review_needed が残っているままコミットしようとした場合は拒否
+  const reviewRemaining = questions.filter(q => q.review_needed);
+  if (reviewRemaining.length > 0) {
+    return json({
+      error: `${reviewRemaining.length}問が文字数チェック未通過です（ID: ${reviewRemaining.map(q => q.id).join(', ')}）。問題文を手動で確認・修正してください。`,
+      review_needed_ids: reviewRemaining.map(q => q.id),
+    }, 422);
   }
 
   const owner = env.GITHUB_OWNER;
@@ -276,8 +313,11 @@ async function handleCommit(request, env) {
     existing = JSON.parse(decodeBase64Utf8(fileData.content));
   }
 
+  // コミット前に review_needed / review_info フィールドを除去
+  const cleanQuestions = questions.map(({ review_needed, review_info, ...q }) => q);
+
   const existingIds = new Set(existing.map(q => q.id));
-  const toAdd = questions.filter(q => !existingIds.has(q.id));
+  const toAdd = cleanQuestions.filter(q => !existingIds.has(q.id));
   if (toAdd.length === 0) {
     return json({ success: true, added: 0, message: 'All questions already exist' });
   }

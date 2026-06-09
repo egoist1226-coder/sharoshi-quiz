@@ -19,8 +19,8 @@ const CHAR_BUFFER = 3;
 // ===== プロンプト =====
 function buildPrompt(isTwoPage, retryNote = '') {
   const base = isTwoPage
-    ? `2枚の画像は社労士試験の問題集です。1枚目が問題ページ、2枚目が解答・解説ページです。問題番号で対応させてすべての問題を抽出してください。`
-    : `この画像は社労士試験の問題集のページです。ページに掲載されているすべての問題を抽出してください。`;
+    ? `2ページのコンテンツ（1ページ目が問題、2ページ目が解答・解説）は社労士試験の問題集です。問題番号で対応させてすべての問題を抽出してください。`
+    : `このページは社労士試験の問題集です。ページに掲載されているすべての問題を抽出してください。`;
 
   const retrySection = retryNote
     ? `\n\n【重要・再抽出指示】\n${retryNote}\n`
@@ -175,25 +175,30 @@ export default {
 // ===== 抽出処理（文字数チェック＋リトライあり）=====
 async function handleExtract(request, env) {
   const body = await request.json();
-  const { image, mimeType, imageQ, imageA, mimeTypeQ, mimeTypeA } = body;
-  const isTwoPage = !!(imageQ && imageA);
+  const { image, mimeType, imageQ, imageA, mimeTypeQ, mimeTypeA, pdf, pdfQ, pdfA } = body;
+  const isTwoPage = !!(imageQ || pdfQ) && !!(imageA || pdfA);
 
-  if (!isTwoPage && !image) {
-    return json({ error: 'No image provided' }, 400);
+  if (!isTwoPage && !image && !pdf) {
+    return json({ error: 'No image or PDF provided' }, 400);
   }
 
-  // 画像contentを構築する関数
+  // 1ブロック分のcontent要素を生成（画像 or PDFドキュメント）
+  const makeBlock = (data, mt, isPdf) => isPdf
+    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } }
+    : { type: 'image',    source: { type: 'base64', media_type: mt || 'image/jpeg',  data } };
+
+  // contentを構築する関数
   const buildContent = (retryNote = '') => {
     const prompt = buildPrompt(isTwoPage, retryNote);
     if (isTwoPage) {
       return [
-        { type: 'image', source: { type: 'base64', media_type: mimeTypeQ || 'image/jpeg', data: imageQ } },
-        { type: 'image', source: { type: 'base64', media_type: mimeTypeA || 'image/jpeg', data: imageA } },
+        makeBlock(pdfQ || imageQ, mimeTypeQ, !!pdfQ),
+        makeBlock(pdfA || imageA, mimeTypeA, !!pdfA),
         { type: 'text', text: prompt }
       ];
     }
     return [
-      { type: 'image', source: { type: 'base64', media_type: mimeType || 'image/jpeg', data: image } },
+      makeBlock(pdf || image, mimeType, !!pdf),
       { type: 'text', text: prompt }
     ];
   };

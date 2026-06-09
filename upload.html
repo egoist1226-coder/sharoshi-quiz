@@ -71,6 +71,7 @@
     .review-save  { width: 100%; padding: 7px; background: #d97706; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; margin-top: 4px; }
     .review-save:active { background: #b45309; }
     .review-warn-box { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #78350f; font-weight: 600; margin-bottom: 10px; }
+    .pdf-indicator { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 16px; margin-top: 12px; font-size: 14px; font-weight: 600; color: #1e40af; }
   </style>
 </head>
 <body>
@@ -90,9 +91,9 @@
     <div class="form-label" style="margin-bottom:6px">📄 問題ページ</div>
     <div class="file-input-wrap">
       <label class="file-input-btn" for="file-input-q">
-        📷 問題ページを撮影 / 選択
+        📷 問題ページを撮影 / 選択（PDF可）
       </label>
-      <input type="file" id="file-input-q" accept="image/*" capture="environment">
+      <input type="file" id="file-input-q" accept="image/*,application/pdf">
     </div>
     <img id="preview-img-q" class="preview-img" style="display:none">
     <div id="rotate-wrap-q" style="display:none">
@@ -106,9 +107,9 @@
     <div class="form-label" style="margin-top:14px; margin-bottom:6px">📄 解説ページ（省略可）</div>
     <div class="file-input-wrap">
       <label class="file-input-btn" for="file-input-a" style="border-color:#a5b4fc">
-        📷 解説ページを撮影 / 選択
+        📷 解説ページを撮影 / 選択（PDF可）
       </label>
-      <input type="file" id="file-input-a" accept="image/*" capture="environment">
+      <input type="file" id="file-input-a" accept="image/*,application/pdf">
     </div>
     <img id="preview-img-a" class="preview-img" style="display:none">
     <div id="rotate-wrap-a" style="display:none">
@@ -197,26 +198,43 @@
     document.getElementById(inputId).addEventListener('change', function(e) {
       const raw = e.target.files[0];
       if (!raw) return;
+      const isPdf = raw.type === 'application/pdf';
       if (isQ) {
         fixedFileQ = raw;
         rotationQ = 0;
         document.getElementById('rotate-label-q').textContent = '';
-        document.getElementById('rotate-wrap-q').style.display = 'block';
+        document.getElementById('rotate-wrap-q').style.display = isPdf ? 'none' : 'block';
         document.getElementById('btn-extract').disabled = false;
       } else {
         fixedFileA = raw;
         rotationA = 0;
         document.getElementById('rotate-label-a').textContent = '';
-        document.getElementById('rotate-wrap-a').style.display = 'block';
+        document.getElementById('rotate-wrap-a').style.display = isPdf ? 'none' : 'block';
       }
-      // プレビュー表示（元画像のまま）
-      const reader = new FileReader();
-      reader.onload = ev => {
-        const img = document.getElementById(previewId);
-        img.src = ev.target.result;
-        img.style.display = 'block';
-      };
-      reader.readAsDataURL(raw);
+      const imgEl = document.getElementById(previewId);
+      // PDF専用インジケーター要素を取得 or 作成
+      let pdfEl = document.getElementById(previewId + '-pdf');
+      if (!pdfEl) {
+        pdfEl = document.createElement('div');
+        pdfEl.id = previewId + '-pdf';
+        pdfEl.className = 'pdf-indicator';
+        imgEl.parentNode.insertBefore(pdfEl, imgEl.nextSibling);
+      }
+      if (isPdf) {
+        // PDF: ファイル名とサイズを表示し画像プレビューは非表示
+        imgEl.style.display = 'none';
+        pdfEl.style.display = 'block';
+        pdfEl.innerHTML = `📄 ${raw.name}<br><span style="font-size:11px;color:#64748b">PDF（${(raw.size/1024).toFixed(0)} KB）</span>`;
+      } else {
+        // 画像: プレビュー表示（元画像のまま）
+        pdfEl.style.display = 'none';
+        const reader = new FileReader();
+        reader.onload = ev => {
+          imgEl.src = ev.target.result;
+          imgEl.style.display = 'block';
+        };
+        reader.readAsDataURL(raw);
+      }
     });
   }
   setupFileInput('file-input-q', 'preview-img-q', true);
@@ -293,6 +311,16 @@
     });
   }
 
+  // PDFファイルをbase64に変換（回転不要）
+  function getPdfBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = ev => resolve(ev.target.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
   // ===== 問題抽出 =====
   async function extractQuestions() {
     const fileQ = fixedFileQ;
@@ -308,17 +336,30 @@
     setExtracting(true);
     try {
       let body;
+
+      // ファイルタイプ判定（画像 or PDF）
+      const isQPdf = fileQ.type === 'application/pdf';
+      const isAPdf = fileA ? fileA.type === 'application/pdf' : false;
+
       if (fileA) {
-        // 回転済みbase64を生成して送信
+        // 2ページモード：画像はcanvas回転、PDFはそのままbase64
         const [b64Q, b64A] = await Promise.all([
-          getRotatedBase64(fileQ, rotationQ),
-          getRotatedBase64(fileA, rotationA),
+          isQPdf ? getPdfBase64(fileQ) : getRotatedBase64(fileQ, rotationQ).then(s => s.split(',')[1]),
+          isAPdf ? getPdfBase64(fileA) : getRotatedBase64(fileA, rotationA).then(s => s.split(',')[1]),
         ]);
-        body = { imageQ: b64Q.split(',')[1], mimeTypeQ: 'image/jpeg',
-                 imageA: b64A.split(',')[1], mimeTypeA: 'image/jpeg' };
+        body = {
+          ...(isQPdf ? { pdfQ: b64Q } : { imageQ: b64Q, mimeTypeQ: 'image/jpeg' }),
+          ...(isAPdf ? { pdfA: b64A } : { imageA: b64A, mimeTypeA: 'image/jpeg' }),
+        };
       } else {
-        const b64 = await getRotatedBase64(fileQ, rotationQ);
-        body = { image: b64.split(',')[1], mimeType: 'image/jpeg' };
+        // 1ページモード
+        if (isQPdf) {
+          const b64 = await getPdfBase64(fileQ);
+          body = { pdf: b64 };
+        } else {
+          const b64 = await getRotatedBase64(fileQ, rotationQ);
+          body = { image: b64.split(',')[1], mimeType: 'image/jpeg' };
+        }
       }
 
       const res = await fetch(`${workerUrl}/extract`, {

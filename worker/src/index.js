@@ -9,12 +9,8 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type, X-Upload-Secret',
 };
 
-// 1行あたりの文字数（問題集の仕様）
-const CHARS_PER_LINE = 36;
-
-// 文字数チェックのバッファ（±3文字）
-// last_line_pos（1〜36の確定位置）を使うため厳格化
-const CHAR_BUFFER = 3;
+// 1行あたりの文字数（問題集の仕様：実測37文字）
+const CHARS_PER_LINE = 37;
 
 // ===== プロンプト =====
 function buildPrompt(isTwoPage, retryNote = '') {
@@ -35,15 +31,15 @@ function buildPrompt(isTwoPage, retryNote = '') {
 - 解説中の赤文字・強調語は <span class="wrong-key">...</span> で囲む
 - 難問ラベルがある問題はdifficulty: "hard"、基礎ラベルはdifficulty: "easy"、それ以外はdifficulty: "normal"
 - categoryは問題のカテゴリ（例：障害厚生年金）
-- line_count: 画像上でその問題文が占める行数（句読点・スペース含む印刷行数）を正確に数える
-- last_line_pos: 最終行において最後の文字が左から何文字目（1〜36）に位置するかを整数で記録する（例：最終行が15文字で終わっていれば 15、36文字ちょうど埋まっていれば 36）
+- line_count: 画像上でその問題文が占める行数（句読点・スペース含む印刷行数）を正確に数える（1行37文字）
+- last_line_half: 最終行の文字数が左半分（1〜18文字）なら "left"、右半分（19〜37文字）なら "right" と記録する
 
 JSONのみを返すこと（説明文は不要）:
 [
   {
     "id": 数値,
     "line_count": 整数,
-    "last_line_pos": 整数（1〜36）,
+    "last_line_half": "left" または "right",
     "category": "カテゴリ名",
     "question": "問題文（原文そのまま）",
     "answer": true,
@@ -65,29 +61,32 @@ function validateCharCount(questions) {
       valid.push(q);
       continue;
     }
-    const n   = q.line_count;
-    const pos = q.last_line_pos; // 1〜36の整数
+    const n    = q.line_count;
+    const half = q.last_line_half; // "left"(1-18) or "right"(19-37)
     const base   = (n - 1) * CHARS_PER_LINE;
     const actual = q.question.length;
 
     let lower, upper, expected;
-    if (pos && pos >= 1 && pos <= 36) {
-      // 案A: last_line_posで確定した期待値に±バッファ
-      expected = base + pos;
-      lower    = expected - CHAR_BUFFER;
-      upper    = expected + CHAR_BUFFER;
+    if (half === 'left') {
+      lower    = base + 1;
+      upper    = base + 18;
+      expected = base + 9;
+    } else if (half === 'right') {
+      lower    = base + 19;
+      upper    = base + 37;
+      expected = base + 27;
     } else {
-      // last_line_pos 未取得時は従来の全範囲（1〜36字）＋バッファ5
-      expected = base + 18; // 中央値
+      // last_line_half 未取得時は全範囲＋バッファ5
+      expected = base + 18;
       lower    = base + 1  - 5;
-      upper    = base + 36 + 5;
+      upper    = base + 37 + 5;
     }
 
     if (actual < lower || actual > upper) {
       invalid.push({
         id: q.id,
         line_count: n,
-        last_line_pos: pos,
+        last_line_half: half,
         expected,
         lower,
         upper,
@@ -101,7 +100,7 @@ function validateCharCount(questions) {
   return { valid, invalid };
 }
 
-// ===== リトライ指示文生成（案C: 具体的なヒント付き）=====
+// ===== リトライ指示文生成（具体的なヒント付き）=====
 function buildRetryNote(failures) {
   return failures.map(f => {
     const absDiff = Math.abs(f.diff);
@@ -113,7 +112,7 @@ function buildRetryNote(failures) {
         `特に文末付近（${f.line_count}行目）が途中で切れていないか、最後まで読み切れているか確認してください。`;
     return (
       `問題ID ${f.id}：` +
-      `行数=${f.line_count}行・最終行位置=${f.last_line_pos ?? '未取得'}文字目、` +
+      `行数=${f.line_count}行・最終行=${f.last_line_half ?? '未取得'}（left=左半分1〜18字/right=右半分19〜37字）、` +
       `想定文字数=${f.expected}字（許容=${f.lower}〜${f.upper}字）、` +
       `前回抽出=${f.actual}字（約${absDiff}字${direction}）。` +
       hint
@@ -223,7 +222,7 @@ async function handleExtract(request, env) {
     // ===== リトライ（最大MAX_RETRIES回）=====
     let remaining = invalid;
     for (let attempt = 2; attempt <= MAX_RETRIES + 1 && remaining.length > 0; attempt++) {
-      const retryNote = buildRetryNote(remaining); // 案C: 具体的な指示
+      const retryNote = buildRetryNote(remaining);
       const retried = await callClaude(env, buildContent(retryNote));
 
       // リトライ対象IDのみ再チェック
@@ -242,7 +241,7 @@ async function handleExtract(request, env) {
       remaining = ri;
     }
 
-    // ===== 案B: 最終的に検証失敗した問題は review_needed フラグ付きで返却 =====
+    // ===== 最終的に検証失敗した問題は review_needed フラグ付きで返却 =====
     // （無条件採用せず、UIで要確認表示・コミットブロック）
     if (remaining.length > 0) {
       const lastRetryNote = buildRetryNote(remaining);
@@ -264,7 +263,7 @@ async function handleExtract(request, env) {
     }
 
     // 検証用フィールドを削除（DBには不要）
-    const output = allQuestions.map(({ line_count, last_line_pos, ...q }) => q);
+    const output = allQuestions.map(({ line_count, last_line_half, ...q }) => q);
 
     return json({
       success: true,
@@ -290,7 +289,7 @@ async function handleCommit(request, env) {
     return json({ error: 'subcatFile is required' }, 400);
   }
 
-  // 案B: review_needed が残っているままコミットしようとした場合は拒否
+  // review_needed が残っているままコミットしようとした場合は拒否
   const reviewRemaining = questions.filter(q => q.review_needed);
   if (reviewRemaining.length > 0) {
     return json({

@@ -120,7 +120,14 @@ function resetSubject(subjectKey) {
 // ===== 複数ファイル統合設定 =====
 const MULTI_SUBJECT_FILES = {
   kenkou_hoken: ['kenkou_hoken_01', 'kenkou_hoken_02', 'kenkou_hoken_03', 'kenkou_hoken_04'],
-  kousei_nenkin: { files: ['kousei_nenkin_01', 'kousei_nenkin_02', 'kousei_nenkin_03', 'kousei_nenkin_04', 'kousei_nenkin_09', 'kousei_nenkin_10', 'kousei_nenkin_11', 'kousei_nenkin_12', 'kousei_nenkin_13'], noIdTransform: true },
+  kousei_nenkin: { files: [
+    'kousei_nenkin_01', 'kousei_nenkin_02', 'kousei_nenkin_03', 'kousei_nenkin_04',
+    'kousei_nenkin_05', 'kousei_nenkin_06', 'kousei_nenkin_07', 'kousei_nenkin_08',
+    'kousei_nenkin_09', 'kousei_nenkin_10', 'kousei_nenkin_11', 'kousei_nenkin_12',
+    'kousei_nenkin_13', 'kousei_nenkin_14', 'kousei_nenkin_15', 'kousei_nenkin_16',
+    'kousei_nenkin_17', 'kousei_nenkin_18', 'kousei_nenkin_19', 'kousei_nenkin_20',
+    'kousei_nenkin_21',
+  ], noIdTransform: true },
 };
 
 const SUBJECT_FILE_ALIAS = {};
@@ -134,7 +141,11 @@ async function loadQuestions(subjectFile, subcat) {
     const targetFiles = (subcat && files.includes(subcat)) ? [subcat] : files;
     const ts = Date.now();
     const results = await Promise.all(
-      targetFiles.map(f => fetch(`data/${f}.json?_=${ts}`, { cache: 'no-store' }).then(r => r.json()))
+      targetFiles.map(f =>
+        fetch(`data/${f}.json?_=${ts}`, { cache: 'no-store' })
+          .then(r => r.ok ? r.json() : [])
+          .catch(() => [])
+      )
     );
     const combined = [];
     results.forEach((qs, idx) => {
@@ -187,6 +198,11 @@ class QuizController {
 
   _selectQuestions(all, mode, subjectKey) {
     const limit = Math.min(SESSION_SIZE, all.length);
+
+    if (mode === 'seq') {
+      // 順番演習: ID昇順で全問
+      return [...all].sort((a, b) => a.id - b.id);
+    }
 
     if (mode === 'weak') {
       const weakIds = getWeakQuestionIds(subjectKey);

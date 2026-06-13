@@ -186,7 +186,7 @@
       <div style="display:flex; justify-content:space-between; align-items:start">
         <div>
           <div class="subject-card-title">厚生年金保険法</div>
-          <div class="subject-card-meta">全289問（全問ランダム or サブカテゴリ選択）・ 社会保険</div>
+          <div class="subject-card-meta">全271問（全問ランダム or サブカテゴリ選択）・ 社会保険</div>
         </div>
         <button class="reset-btn" onclick="handleReset('kousei_nenkin', this)">リセット</button>
       </div>
@@ -276,6 +276,13 @@
         <div class="mode-info">
           <div class="mode-name">苦手問題のみ</div>
           <div class="mode-desc" id="modal-weak-desc">1度でも間違えた問題を集中演習</div>
+        </div>
+      </div>
+      <div class="mode-option" id="mode-seq" onclick="selectMode('seq')">
+        <div class="mode-icon">🔢</div>
+        <div class="mode-info">
+          <div class="mode-name">順番演習</div>
+          <div class="mode-desc" id="modal-seq-desc">問題番号順に全問を出題</div>
         </div>
       </div>
     </div>
@@ -471,20 +478,28 @@
   const ALL_MODE_DESC = {
     kokumin_kenko_hoken: '全100問からランダムに30問を出題',
     kenkou_hoken:        '全565問（①〜④）からランダムに30問を出題',
-    kousei_nenkin:       '全289問からランダムに30問を出題',
+    kousei_nenkin:       '全271問からランダムに30問を出題',
   };
 
   // 厚生年金保険法のサブカテゴリ定義（idRange: [min, max] で正答率集計に使用）
   const KOUSEI_NENKIN_SUBCATS = [
-    { file: 'kousei_nenkin_01', label: '1. 総則',                    count: 6,  idRange: [1,   6]   },
-    { file: 'kousei_nenkin_02', label: '2. 被保険者',                 count: 63, idRange: [7,   69]  },
+    { file: 'kousei_nenkin_01', label: '1. 総則',              count: 6,  idRange: [1,   6]   },
+    { file: 'kousei_nenkin_02', label: '2. 被保険者',           count: 63, idRange: [7,   69]  },
     { file: 'kousei_nenkin_03', label: '3. 標準報酬月額及び標準賞与額', count: 27, idRange: [70,  96]  },
-    { file: 'kousei_nenkin_04', label: '4. 届出・記録等',              count: 44, idRange: [97,  140] },
-    { file: 'kousei_nenkin_09', label: '9. 老齢厚生年金',              count: 45, idRange: [216, 260] },
-    { file: 'kousei_nenkin_10', label: '10. 障害厚生年金',             count: 46, idRange: [261, 306] },
-    { file: 'kousei_nenkin_11', label: '11. 障害手当金',               count: 9,  idRange: [307, 315] },
-    { file: 'kousei_nenkin_12', label: '12. 遺族厚生年金',             count: 40, idRange: [316, 355] },
-    { file: 'kousei_nenkin_13', label: '13. 遺族厚生年金（支給停止、失権等）', count: 9,  idRange: [356, 364] },
+    { file: 'kousei_nenkin_04', label: '4. 届出・記録等',        count: 44, idRange: [97,  140] },
+    { file: 'kousei_nenkin_09', label: '9. 老齢厚生年金',             count: 45, idRange: [216, 260] },
+    { file: 'kousei_nenkin_10', label: '10. 障害厚生年金',            count: 46, idRange: [261, 306] },
+    { file: 'kousei_nenkin_11', label: '11. 障害手当金',                          count: 0,  idRange: [307, 315] },
+    { file: 'kousei_nenkin_12', label: '12. 遺族厚生年金（支給要件・年金額等）', count: 40, idRange: [316, 355] },
+    { file: 'kousei_nenkin_13', label: '13. 遺族厚生年金（支給停止）',           count: 0,  idRange: [356, 410] },
+    { file: 'kousei_nenkin_14', label: '14. 離婚の場合の特例',                   count: 0,  idRange: [411, 450] },
+    { file: 'kousei_nenkin_15', label: '15. 脱退一時金',                         count: 0,  idRange: [451, 490] },
+    { file: 'kousei_nenkin_16', label: '16. 年金額の改定等',                     count: 0,  idRange: [491, 530] },
+    { file: 'kousei_nenkin_17', label: '17. ２以上の種別の保険者の特例',         count: 0,  idRange: [531, 570] },
+    { file: 'kousei_nenkin_18', label: '18. 保険給付の制限',                     count: 0,  idRange: [571, 610] },
+    { file: 'kousei_nenkin_19', label: '19. 保険料の額（保険料の額）',           count: 0,  idRange: [611, 650] },
+    { file: 'kousei_nenkin_20', label: '20. 保険料の額（繰上調整）',             count: 0,  idRange: [651, 690] },
+    { file: 'kousei_nenkin_21', label: '21. 雑則・罰則',                         count: 0,  idRange: [691, 730] },
   ];
 
   // サブカテゴリの正答率を計算（未演習はnullを返す）
@@ -568,7 +583,7 @@
 
   function startSubcatQuiz(subcatFile) {
     closeModal();
-    location.href = `quiz.html?subject=${currentSubject}&mode=all&subcat=${subcatFile}`;
+    location.href = `quiz.html?subject=${currentSubject}&mode=${selectedMode}&subcat=${subcatFile}`;
   }
 
   function closeModalOutside(e) {
@@ -583,6 +598,7 @@
     selectedMode = mode;
     document.getElementById('mode-all').classList.toggle('selected', mode === 'all');
     document.getElementById('mode-weak').classList.toggle('selected', mode === 'weak');
+    document.getElementById('mode-seq').classList.toggle('selected', mode === 'seq');
   }
 
   function startQuiz() {

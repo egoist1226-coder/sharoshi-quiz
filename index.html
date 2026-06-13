@@ -286,6 +286,21 @@
         </div>
       </div>
     </div>
+    <!-- 難易度フィルター（順番演習時のみ表示） -->
+    <div id="diff-filter" class="hidden" style="margin-top:14px; padding:12px 14px; background:var(--gray-100); border-radius:var(--radius); border:1px solid var(--gray-200);">
+      <div style="font-size:12px; font-weight:600; color:var(--gray-600); margin-bottom:8px;">出題する難易度（複数選択可）</div>
+      <div style="display:flex; gap:16px;">
+        <label style="display:flex; align-items:center; gap:6px; font-size:14px; cursor:pointer;">
+          <input type="checkbox" id="diff-easy"   checked style="width:16px;height:16px;"> 易
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; font-size:14px; cursor:pointer;">
+          <input type="checkbox" id="diff-normal" checked style="width:16px;height:16px;"> 普通
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; font-size:14px; cursor:pointer;">
+          <input type="checkbox" id="diff-hard"   checked style="width:16px;height:16px;"> 難
+        </label>
+      </div>
+    </div>
     <div style="margin-top:16px">
       <button class="btn btn-primary" style="width:100%; font-size:16px; padding:16px;" onclick="startQuiz()">
         この設定で開始 ▶
@@ -581,9 +596,17 @@
     document.getElementById('modal').classList.add('show');
   }
 
+  function getDiffParam() {
+    if (selectedMode !== 'seq') return '';
+    const selected = ['easy', 'normal', 'hard'].filter(d =>
+      document.getElementById(`diff-${d}`).checked
+    );
+    return selected.length === 3 ? '' : `&diff=${selected.join(',')}`;
+  }
+
   function startSubcatQuiz(subcatFile) {
     closeModal();
-    location.href = `quiz.html?subject=${currentSubject}&mode=${selectedMode}&subcat=${subcatFile}`;
+    location.href = `quiz.html?subject=${currentSubject}&mode=${selectedMode}&subcat=${subcatFile}${getDiffParam()}`;
   }
 
   function closeModalOutside(e) {
@@ -599,10 +622,11 @@
     document.getElementById('mode-all').classList.toggle('selected', mode === 'all');
     document.getElementById('mode-weak').classList.toggle('selected', mode === 'weak');
     document.getElementById('mode-seq').classList.toggle('selected', mode === 'seq');
+    document.getElementById('diff-filter').classList.toggle('hidden', mode !== 'seq');
   }
 
   function startQuiz() {
-    location.href = `quiz.html?subject=${currentSubject}&mode=${selectedMode}`;
+    location.href = `quiz.html?subject=${currentSubject}&mode=${selectedMode}${getDiffParam()}`;
   }
 
   async function handleReset(subject) {

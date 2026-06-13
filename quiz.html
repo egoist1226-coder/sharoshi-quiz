@@ -195,18 +195,21 @@
   let quiz = null;
 
   async function init() {
-    const { subject, mode, subcat } = QuizAPI.getParams();
+    const { subject, mode, subcat, diff } = QuizAPI.getParams();
     const subjectName = SUBJECT_NAMES[subject] || subject;
     const subcatName = subcat ? (SUBCAT_NAMES[subcat] || subcat) : '';
 
     document.getElementById('header-title').textContent =
       subcatName ? `${subcatName}` : subjectName;
-    document.getElementById('header-mode').textContent = MODE_LABELS[mode] || mode;
+    const diffLabel = diff.length > 0
+      ? `順番(${diff.map(d => ({easy:'易',normal:'普',hard:'難'})[d]).join('/')})` : '順番';
+    document.getElementById('header-mode').textContent =
+      mode === 'seq' ? diffLabel : (MODE_LABELS[mode] || mode);
 
     const allQ = await QuizAPI.loadQuestions(subject, subcat);
     // サブカテゴリ演習時はサブカテゴリ名をキーに使う（他カテゴリのデータと完全分離）
     const storageKey = subcat || subject;
-    quiz = new QuizAPI.QuizController(allQ, storageKey, mode);
+    quiz = new QuizAPI.QuizController(allQ, storageKey, mode, diff);
 
     if (quiz.total === 0) {
       showEmptyState(mode);

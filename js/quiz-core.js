@@ -166,10 +166,13 @@ async function loadQuestions(subjectFile, subcat) {
 // ===== URLパラメータ =====
 function getParams() {
   const p = new URLSearchParams(location.search);
+  const diffRaw = p.get('diff') || '';
+  const diff = diffRaw ? diffRaw.split(',').filter(Boolean) : [];
   return {
     subject: p.get('subject') || 'kokumin_kenko_hoken',
     mode: p.get('mode') || 'all',
     subcat: p.get('subcat') || '',
+    diff, // [] = 全難易度、['easy','normal'] 等 = 絞り込み
   };
 }
 
@@ -185,23 +188,24 @@ function shuffle(arr) {
 
 // ===== クイズコントローラー =====
 class QuizController {
-  constructor(questions, subjectKey, mode) {
+  constructor(questions, subjectKey, mode, diff = []) {
     this.subjectKey = subjectKey;
     this.mode = mode;
     this.allQuestions = questions;
-    this.questions = this._selectQuestions(questions, mode, subjectKey);
+    this.questions = this._selectQuestions(questions, mode, subjectKey, diff);
     this.current = 0;
     this.correctCount = 0;
     this.wrongCount = 0;
     this.answered = false;
   }
 
-  _selectQuestions(all, mode, subjectKey) {
+  _selectQuestions(all, mode, subjectKey, diff) {
     const limit = Math.min(SESSION_SIZE, all.length);
 
     if (mode === 'seq') {
-      // 順番演習: ID昇順で全問
-      return [...all].sort((a, b) => a.id - b.id);
+      // 順番演習: 難易度フィルター後にID昇順で全問
+      const filtered = diff.length > 0 ? all.filter(q => diff.includes(q.difficulty)) : all;
+      return [...filtered].sort((a, b) => a.id - b.id);
     }
 
     if (mode === 'weak') {

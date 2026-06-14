@@ -427,7 +427,7 @@
         const data = await res.json();
 
         if (!res.ok || !data.success) {
-          const msg = data.error || '抽出失敗';
+          const msg = `[HTTP ${res.status}] ${data.error || '抽出失敗'}${data.detail ? ' / ' + data.detail : ''}`;
           errorItems.push({ pairNo: pair.pairNo, msg });
           addBatchLog(`ペア ${pair.pairNo} ❌ ${msg}`, 'err');
         } else {

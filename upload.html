@@ -77,6 +77,13 @@
     .batch-log-item.err  { color: #991b1b; }
     .batch-log-item.info { color: #4338ca; }
 
+    .btn-cancel {
+      width: 100%; padding: 12px; background: #dc2626; color: #fff;
+      border: none; border-radius: 10px; font-size: 15px; font-weight: 700;
+      cursor: pointer; margin-top: 10px;
+    }
+    .btn-cancel:active { background: #b91c1c; }
+
     .review-error-card {
       background: #fee2e2; border-radius: 8px; padding: 10px 12px;
       margin-bottom: 8px; font-size: 12px; color: #991b1b;
@@ -188,6 +195,9 @@
         <div class="batch-progress-bar" id="batch-progress-bar" style="width:0%"></div>
       </div>
       <div class="batch-log" id="batch-log"></div>
+      <button class="btn-cancel" id="btn-cancel" onclick="cancelBatch()" style="display:none;">
+        🛑 送信停止
+      </button>
     </div>
   </div>
 
@@ -212,6 +222,7 @@
   let fixedFileA = null;
   let uploadMode = 'photo'; // 'photo' | 'batch'
   let batchPdfFile = null;
+  let batchAbortController = null;
 
   // ===== 初期化 =====
   window.addEventListener('DOMContentLoaded', () => {
@@ -343,11 +354,11 @@
           : { image: b64.split(',')[1], mimeType: 'image/jpeg' };
       }
 
-      const res = await fetch(`${workerUrl}/extract`, {
+      const res = await fetchWithTimeout(`${workerUrl}/extract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Upload-Secret': secret },
         body: JSON.stringify(body)
-      });
+      }, 120000);
       if (res.status === 401) throw new Error(`認証エラー(401)。認証コード: "${secret}"`);
       const data = await res.json();
       if (!res.ok || !data.success)
@@ -388,22 +399,31 @@
     extractedQuestions = [];
     const errorItems = [];
 
+    // 中断コントローラー初期化・停止ボタン表示
+    batchAbortController = new AbortController();
+    document.getElementById('btn-cancel').style.display = 'block';
+
     // 進捗UI初期化
     document.getElementById('batch-progress-wrap').style.display = 'block';
     document.getElementById('batch-log').innerHTML = '';
     updateBatchProgress(0, pairs.length, '処理を開始します...');
 
     for (const pair of pairs) {
+      if (batchAbortController.signal.aborted) {
+        addBatchLog('🛑 ユーザーにより停止されました', 'err');
+        break;
+      }
+
       updateBatchProgress(pair.pairNo - 1, pairs.length, `ペア ${pair.pairNo} / ${pairs.length} を抽出中...`);
       addBatchLog(`ペア ${pair.pairNo} 送信中...`, 'info');
 
       try {
         const body = { pdfQ: pair.pdfQB64, pdfA: pair.pdfAB64 };
-        const res = await fetch(`${workerUrl}/extract`, {
+        const res = await fetchWithTimeout(`${workerUrl}/extract`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Upload-Secret': secret },
           body: JSON.stringify(body)
-        });
+        }, 120000, batchAbortController.signal);
         const data = await res.json();
 
         if (!res.ok || !data.success) {
@@ -416,14 +436,24 @@
           addBatchLog(`ペア ${pair.pairNo} ✅ ${data.questions.length}問取得${rev}`, 'ok');
         }
       } catch(e) {
-        errorItems.push({ pairNo: pair.pairNo, msg: e.message });
-        addBatchLog(`ペア ${pair.pairNo} ❌ ${e.message}`, 'err');
+        const msg = e.message || '通信エラー';
+        errorItems.push({ pairNo: pair.pairNo, msg });
+        addBatchLog(`ペア ${pair.pairNo} ❌ ${msg}`, 'err');
+        if (batchAbortController.signal.aborted) break;
       }
     }
 
-    updateBatchProgress(pairs.length, pairs.length, `完了 — 全${extractedQuestions.length}問を取得しました`);
+    // 停止ボタンを隠す
+    document.getElementById('btn-cancel').style.display = 'none';
+    batchAbortController = null;
+
+    const cancelled = document.getElementById('batch-status-text').textContent.includes('停止');
+    const summary = cancelled
+      ? `停止 — ${extractedQuestions.length}問を取得済み`
+      : `完了 — 全${extractedQuestions.length}問を取得しました`;
+    updateBatchProgress(pairs.length, pairs.length, summary);
     setExtracting(false);
-    showPreview(extractedQuestions, errorItems);
+    if (extractedQuestions.length > 0) showPreview(extractedQuestions, errorItems);
   }
 
   // PDF を1ページずつ抽出してペアにまとめる
@@ -536,6 +566,32 @@
     document.getElementById('btn-extract').disabled = loading;
     document.getElementById('extract-label').style.display  = loading ? 'none'         : 'inline';
     document.getElementById('extract-spinner').style.display = loading ? 'inline-block' : 'none';
+  }
+
+  function fetchWithTimeout(url, options, ms, externalSignal = null) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    if (externalSignal) {
+      externalSignal.addEventListener('abort', () => controller.abort());
+    }
+    return fetch(url, { ...options, signal: controller.signal })
+      .then(r => { clearTimeout(timer); return r; })
+      .catch(e => {
+        clearTimeout(timer);
+        if (e.name === 'AbortError') {
+          if (externalSignal?.aborted) throw new Error('ユーザーにより停止されました');
+          throw new Error(`タイムアウト（${ms/1000}秒超過）`);
+        }
+        throw e;
+      });
+  }
+
+  function cancelBatch() {
+    if (batchAbortController) {
+      batchAbortController.abort();
+      addBatchLog('🛑 停止リクエストを送信しました...', 'err');
+      document.getElementById('btn-cancel').disabled = true;
+    }
   }
 
   function fileToBase64(file) {

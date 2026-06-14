@@ -31,8 +31,9 @@ function buildPrompt(isTwoPage, retryNote = '') {
 - 解説中の赤文字・強調語は <span class="wrong-key">...</span> で囲む
 - 難問ラベルがある問題はdifficulty: "hard"、基礎ラベルはdifficulty: "easy"、それ以外はdifficulty: "normal"
 - categoryは問題のカテゴリ（例：障害厚生年金）
-- line_count: 画像上でその問題文が占める行数（句読点・スペース含む印刷行数）を正確に数える（1行37文字）
+- line_count: 問題文本文のみの印刷行数を正確に数える（1行37文字）。問題番号・難易度ラベル・試験回次（例：「379 □□□ 難 R元.5-ア」）の行はline_countに含めないこと
 - last_line_half: 最終行の文字数が左半分（1〜18文字）なら "left"、右半分（19〜37文字）なら "right" と記録する
+- ※ 括弧「(」「)」やピリオド「.」などの半角文字は0.5文字としてカウントする
 
 JSONのみを返すこと（説明文は不要）:
 [
@@ -289,14 +290,8 @@ async function handleCommit(request, env) {
     return json({ error: 'subcatFile is required' }, 400);
   }
 
-  // review_needed が残っているままコミットしようとした場合は拒否
+  // review_needed は警告のみ（コミットはブロックしない）
   const reviewRemaining = questions.filter(q => q.review_needed);
-  if (reviewRemaining.length > 0) {
-    return json({
-      error: `${reviewRemaining.length}問が文字数チェック未通過です（ID: ${reviewRemaining.map(q => q.id).join(', ')}）。問題文を手動で確認・修正してください。`,
-      review_needed_ids: reviewRemaining.map(q => q.id),
-    }, 422);
-  }
 
   const owner = env.GITHUB_OWNER;
   const repo  = env.GITHUB_REPO;

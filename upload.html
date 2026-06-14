@@ -453,21 +453,31 @@
 
       updateBatchProgress(pair.pairNo - 1, pairs.length, `ペア ${pair.pairNo} / ${pairs.length} を抽出中...`);
 
-      let imgQ, imgA;
+      // OCRテキスト抽出（Adobe Scan のテキスト層を直接使用）
+      let body;
       try {
-        imgQ = await renderPdfPageToJpeg(pdfDoc, pair.pageQ);
-        imgA = await renderPdfPageToJpeg(pdfDoc, pair.pageA);
+        const textQ = await extractPdfPageText(pdfDoc, pair.pageQ);
+        const textA = await extractPdfPageText(pdfDoc, pair.pageA);
+
+        if (textQ && textA && textQ.trim().length > 30) {
+          // OCRテキストが取得できた場合（Adobe Scan等）
+          addBatchLog(`ペア ${pair.pairNo} 送信中... (OCR ${textQ.length + textA.length} 文字)`, 'info');
+          body = { textQ, textA };
+        } else {
+          // テキスト層がない場合はJPEGにフォールバック
+          const imgQ = await renderPdfPageToJpeg(pdfDoc, pair.pageQ);
+          const imgA = await renderPdfPageToJpeg(pdfDoc, pair.pageA);
+          const pairSizeKB = Math.round((imgQ.length + imgA.length) / 1024);
+          addBatchLog(`ペア ${pair.pairNo} 送信中... (JPEG ${pairSizeKB} KB)`, 'info');
+          body = { imageQ: imgQ, mimeTypeQ: 'image/jpeg', imageA: imgA, mimeTypeA: 'image/jpeg' };
+        }
       } catch(e) {
-        addBatchLog(`ペア ${pair.pairNo} ❌ PDF描画エラー: ${e.message}`, 'err');
-        errorItems.push({ pairNo: pair.pairNo, msg: 'PDF描画エラー: ' + e.message });
+        addBatchLog(`ペア ${pair.pairNo} ❌ PDF読取エラー: ${e.message}`, 'err');
+        errorItems.push({ pairNo: pair.pairNo, msg: 'PDF読取エラー: ' + e.message });
         continue;
       }
 
-      const pairSizeKB = Math.round((imgQ.length + imgA.length) / 1024);
-      addBatchLog(`ペア ${pair.pairNo} 送信中... (JPEG ${pairSizeKB} KB)`, 'info');
-
       try {
-        const body = { imageQ: imgQ, mimeTypeQ: 'image/jpeg', imageA: imgA, mimeTypeA: 'image/jpeg' };
         const res = await fetchWithTimeout(`${workerUrl}/extract`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Upload-Secret': secret },
@@ -505,7 +515,27 @@
     if (extractedQuestions.length > 0) showPreview(extractedQuestions, errorItems);
   }
 
-  // PDFの指定ページをJPEG base64に変換（PDF.js使用）
+  // Adobe Scan等のOCRテキスト層を抽出（画像変換不要）
+  async function extractPdfPageText(pdfJsDoc, pageIndex) {
+    const page = await pdfJsDoc.getPage(pageIndex + 1);
+    const textContent = await page.getTextContent();
+    if (!textContent.items || textContent.items.length === 0) return null;
+
+    // Y座標でグループ化して行順に並べる（PDF座標は下から上なので降順）
+    const lineMap = new Map();
+    for (const item of textContent.items) {
+      if (!item.str) continue;
+      const y = Math.round(item.transform[5] / 4) * 4;
+      if (!lineMap.has(y)) lineMap.set(y, []);
+      lineMap.get(y).push({ x: item.transform[4], str: item.str });
+    }
+    return [...lineMap.entries()]
+      .sort((a, b) => b[0] - a[0])
+      .map(([, items]) => items.sort((a, b) => a.x - b.x).map(i => i.str).join(''))
+      .join('\n');
+  }
+
+  // PDFの指定ページをJPEG base64に変換（OCRなし時のフォールバック）
   async function renderPdfPageToJpeg(pdfJsDoc, pageIndex) {
     const page = await pdfJsDoc.getPage(pageIndex + 1); // PDF.jsは1始まり
     const viewport = page.getViewport({ scale: 1.5 });

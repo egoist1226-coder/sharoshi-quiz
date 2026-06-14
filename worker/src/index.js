@@ -13,14 +13,28 @@ const CORS_HEADERS = {
 const CHARS_PER_LINE = 37;
 
 // ===== プロンプト =====
-function buildPrompt(isTwoPage, retryNote = '') {
-  const base = isTwoPage
-    ? `2ページのコンテンツ（1ページ目が問題、2ページ目が解答・解説）は社労士試験の問題集です。問題番号で対応させてすべての問題を抽出してください。`
-    : `このページは社労士試験の問題集です。ページに掲載されているすべての問題を抽出してください。`;
+function buildPrompt(isTwoPage, retryNote = '', isTextMode = false) {
+  let base;
+  if (isTextMode) {
+    base = `以下は社労士試験問題集のOCRテキストです（問題ページと解説ページ）。問題番号で対応させてすべての問題を抽出してください。`;
+  } else if (isTwoPage) {
+    base = `2ページのコンテンツ（1ページ目が問題、2ページ目が解答・解説）は社労士試験の問題集です。問題番号で対応させてすべての問題を抽出してください。`;
+  } else {
+    base = `このページは社労士試験の問題集です。ページに掲載されているすべての問題を抽出してください。`;
+  }
 
   const retrySection = retryNote
     ? `\n\n【重要・再抽出指示】\n${retryNote}\n`
     : '';
+
+  const lineCountRule = isTextMode ? '' : `
+- line_count: 問題文本文のみの印刷行数を正確に数える（1行37文字）。問題番号・難易度ラベル・試験回次（例：「379 □□□ 難 R元.5-ア」）の行はline_countに含めないこと
+- last_line_half: 最終行の文字数が左半分（1〜18文字）なら "left"、右半分（19〜37文字）なら "right" と記録する
+- ※ 括弧「(」「)」やピリオド「.」などの半角文字は0.5文字としてカウントする`;
+
+  const lineCountJson = isTextMode ? '' : `
+    "line_count": 整数,
+    "last_line_half": "left" または "right",`;
 
   return `${base}${retrySection}
 
@@ -30,17 +44,12 @@ function buildPrompt(isTwoPage, retryNote = '') {
 - 答の○はtrue、×はfalseとする${isTwoPage ? '（解説ページの○×を参照）' : ''}
 - 解説中の赤文字・強調語は <span class="wrong-key">...</span> で囲む
 - 難問ラベルがある問題はdifficulty: "hard"、基礎ラベルはdifficulty: "easy"、それ以外はdifficulty: "normal"
-- categoryは問題のカテゴリ（例：障害厚生年金）
-- line_count: 問題文本文のみの印刷行数を正確に数える（1行37文字）。問題番号・難易度ラベル・試験回次（例：「379 □□□ 難 R元.5-ア」）の行はline_countに含めないこと
-- last_line_half: 最終行の文字数が左半分（1〜18文字）なら "left"、右半分（19〜37文字）なら "right" と記録する
-- ※ 括弧「(」「)」やピリオド「.」などの半角文字は0.5文字としてカウントする
+- categoryは問題のカテゴリ（例：障害厚生年金）${lineCountRule}
 
 JSONのみを返すこと（説明文は不要）:
 [
   {
-    "id": 数値,
-    "line_count": 整数,
-    "last_line_half": "left" または "right",
+    "id": 数値,${lineCountJson}
     "category": "カテゴリ名",
     "question": "問題文（原文そのまま）",
     "answer": true,
@@ -175,10 +184,11 @@ export default {
 // ===== 抽出処理（文字数チェック＋リトライあり）=====
 async function handleExtract(request, env) {
   const body = await request.json();
-  const { image, mimeType, imageQ, imageA, mimeTypeQ, mimeTypeA, pdf, pdfQ, pdfA } = body;
-  const isTwoPage = !!(imageQ || pdfQ) && !!(imageA || pdfA);
+  const { image, mimeType, imageQ, imageA, mimeTypeQ, mimeTypeA, pdf, pdfQ, pdfA, textQ, textA } = body;
+  const isTextMode = !!(textQ && textA);
+  const isTwoPage = isTextMode || (!!(imageQ || pdfQ) && !!(imageA || pdfA));
 
-  if (!isTwoPage && !image && !pdf) {
+  if (!isTextMode && !isTwoPage && !image && !pdf) {
     return json({ error: 'No image or PDF provided' }, 400);
   }
 
@@ -189,7 +199,14 @@ async function handleExtract(request, env) {
 
   // contentを構築する関数
   const buildContent = (retryNote = '') => {
-    const prompt = buildPrompt(isTwoPage, retryNote);
+    const prompt = buildPrompt(isTwoPage, retryNote, isTextMode);
+    if (isTextMode) {
+      return [
+        { type: 'text', text: `【問題ページ OCRテキスト】\n${textQ}` },
+        { type: 'text', text: `【解説ページ OCRテキスト】\n${textA}` },
+        { type: 'text', text: prompt }
+      ];
+    }
     if (isTwoPage) {
       return [
         makeBlock(pdfQ || imageQ, mimeTypeQ, !!pdfQ),
@@ -208,6 +225,13 @@ async function handleExtract(request, env) {
   const validationLog = [];
 
   try {
+    // ===== テキストモード：バリデーション不要で即返却 =====
+    if (isTextMode) {
+      const questions = await callClaude(env, buildContent());
+      const output = questions.map(({ line_count, last_line_half, ...q }) => q);
+      return json({ success: true, questions: output, validation: [], review_count: 0 });
+    }
+
     // ===== 第1回抽出 =====
     let questions = await callClaude(env, buildContent());
     const { valid, invalid } = validateCharCount(questions);

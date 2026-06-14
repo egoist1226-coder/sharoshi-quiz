@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <title>問題追加 - 社労士</title>
   <link rel="stylesheet" href="css/style.css">
-  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
     .upload-page { max-width: 600px; margin: 0 auto; padding: 16px; }
     .upload-section { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
@@ -224,6 +224,10 @@
   let batchPdfFile = null;
   let batchAbortController = null;
 
+  // PDF.js ワーカー設定
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
   // ===== 初期化 =====
   window.addEventListener('DOMContentLoaded', () => {
     const savedSecret = localStorage.getItem('upload_secret');
@@ -303,10 +307,9 @@
 
     // ページ数を確認
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const { PDFDocument } = PDFLib;
-      const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-      const total = doc.getPageCount();
+      const ab = await file.arrayBuffer();
+      const doc = await pdfjsLib.getDocument({ data: ab }).promise;
+      const total = doc.numPages;
       const pairs = Math.floor(total / 2);
       const infoEl = document.getElementById('pdf-info');
       infoEl.style.display = 'block';
@@ -340,18 +343,23 @@
       const isPdfQ = fileQ.type === 'application/pdf';
       const isPdfA = fileA && fileA.type === 'application/pdf';
       if (fileA) {
-        const [b64Q, b64A] = await Promise.all([fileToBase64(fileQ), fileToBase64(fileA)]);
-        if (isPdfQ || isPdfA) {
-          body = { pdfQ: b64Q.split(',')[1], pdfA: b64A.split(',')[1] };
-        } else {
-          body = { imageQ: b64Q.split(',')[1], mimeTypeQ: 'image/jpeg',
-                   imageA: b64A.split(',')[1], mimeTypeA: 'image/jpeg' };
-        }
+        // PDFの場合はJPEGに変換して送信
+        const imgQ = isPdfQ
+          ? await renderPdfPageToJpeg(await pdfjsLib.getDocument({ data: await fileQ.arrayBuffer() }).promise, 0)
+          : (await fileToBase64(fileQ)).split(',')[1];
+        const imgA = isPdfA
+          ? await renderPdfPageToJpeg(await pdfjsLib.getDocument({ data: await fileA.arrayBuffer() }).promise, 0)
+          : (await fileToBase64(fileA)).split(',')[1];
+        body = { imageQ: imgQ, mimeTypeQ: 'image/jpeg', imageA: imgA, mimeTypeA: 'image/jpeg' };
       } else {
-        const b64 = await fileToBase64(fileQ);
-        body = isPdfQ
-          ? { pdf: b64.split(',')[1] }
-          : { image: b64.split(',')[1], mimeType: 'image/jpeg' };
+        if (isPdfQ) {
+          const pdfDoc = await pdfjsLib.getDocument({ data: await fileQ.arrayBuffer() }).promise;
+          const img = await renderPdfPageToJpeg(pdfDoc, 0);
+          body = { image: img, mimeType: 'image/jpeg' };
+        } else {
+          const b64 = await fileToBase64(fileQ);
+          body = { image: b64.split(',')[1], mimeType: 'image/jpeg' };
+        }
       }
 
       const res = await fetchWithTimeout(`${workerUrl}/extract`, {
@@ -384,13 +392,18 @@
 
     localStorage.setItem('upload_secret', secret);
 
-    // PDFを分割
-    let pairs;
+    // PDFを読み込んでページ数を確認
+    let pdfDoc, pairs;
     try {
-      const bytes = new Uint8Array(await batchPdfFile.arrayBuffer());
-      pairs = await splitPdfToPairs(bytes);
+      const ab = await batchPdfFile.arrayBuffer();
+      pdfDoc = await pdfjsLib.getDocument({ data: ab }).promise;
+      const total = pdfDoc.numPages;
+      pairs = [];
+      for (let i = 0; i + 1 < total; i += 2) {
+        pairs.push({ pairNo: i / 2 + 1, pageQ: i, pageA: i + 1 });
+      }
     } catch(e) {
-      return alert('PDF分割エラー: ' + e.message);
+      return alert('PDF読み込みエラー: ' + e.message);
     }
 
     if (pairs.length === 0) return alert('有効なページペアが見つかりません（ページ数が偶数でない可能性があります）');
@@ -416,11 +429,22 @@
       }
 
       updateBatchProgress(pair.pairNo - 1, pairs.length, `ペア ${pair.pairNo} / ${pairs.length} を抽出中...`);
-      const pairSizeKB = Math.round((pair.pdfQB64.length + pair.pdfAB64.length) / 1024);
-      addBatchLog(`ペア ${pair.pairNo} 送信中... (データ ${pairSizeKB} KB)`, 'info');
+
+      let imgQ, imgA;
+      try {
+        imgQ = await renderPdfPageToJpeg(pdfDoc, pair.pageQ);
+        imgA = await renderPdfPageToJpeg(pdfDoc, pair.pageA);
+      } catch(e) {
+        addBatchLog(`ペア ${pair.pairNo} ❌ PDF描画エラー: ${e.message}`, 'err');
+        errorItems.push({ pairNo: pair.pairNo, msg: 'PDF描画エラー: ' + e.message });
+        continue;
+      }
+
+      const pairSizeKB = Math.round((imgQ.length + imgA.length) / 1024);
+      addBatchLog(`ペア ${pair.pairNo} 送信中... (JPEG ${pairSizeKB} KB)`, 'info');
 
       try {
-        const body = { pdfQ: pair.pdfQB64, pdfA: pair.pdfAB64 };
+        const body = { imageQ: imgQ, mimeTypeQ: 'image/jpeg', imageA: imgA, mimeTypeA: 'image/jpeg' };
         const res = await fetchWithTimeout(`${workerUrl}/extract`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Upload-Secret': secret },
@@ -458,35 +482,16 @@
     if (extractedQuestions.length > 0) showPreview(extractedQuestions, errorItems);
   }
 
-  // PDF を1ページずつ抽出してペアにまとめる
-  async function splitPdfToPairs(pdfBytes) {
-    const { PDFDocument } = PDFLib;
-    const srcDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-    const total  = srcDoc.getPageCount();
-    const pairs  = [];
-
-    for (let i = 0; i + 1 < total; i += 2) {
-      const qDoc = await PDFDocument.create();
-      const [qPage] = await qDoc.copyPages(srcDoc, [i]);
-      qDoc.addPage(qPage);
-
-      const aDoc = await PDFDocument.create();
-      const [aPage] = await aDoc.copyPages(srcDoc, [i + 1]);
-      aDoc.addPage(aPage);
-
-      pairs.push({
-        pairNo:  i / 2 + 1,
-        pdfQB64: uint8ToBase64(await qDoc.save()),
-        pdfAB64: uint8ToBase64(await aDoc.save()),
-      });
-    }
-    return pairs;
-  }
-
-  function uint8ToBase64(bytes) {
-    let bin = '';
-    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-    return btoa(bin);
+  // PDFの指定ページをJPEG base64に変換（PDF.js使用）
+  async function renderPdfPageToJpeg(pdfJsDoc, pageIndex) {
+    const page = await pdfJsDoc.getPage(pageIndex + 1); // PDF.jsは1始まり
+    const viewport = page.getViewport({ scale: 1.5 });
+    const canvas = document.createElement('canvas');
+    canvas.width  = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    return dataUrl.replace(/^data:image\/jpeg;base64,/, '');
   }
 
   function updateBatchProgress(done, total, text) {

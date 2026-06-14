@@ -415,7 +415,8 @@
       }
 
       updateBatchProgress(pair.pairNo - 1, pairs.length, `ペア ${pair.pairNo} / ${pairs.length} を抽出中...`);
-      addBatchLog(`ペア ${pair.pairNo} 送信中...`, 'info');
+      const pairSizeKB = Math.round((pair.pdfQB64.length + pair.pdfAB64.length) / 1024);
+      addBatchLog(`ペア ${pair.pairNo} 送信中... (データ ${pairSizeKB} KB)`, 'info');
 
       try {
         const body = { pdfQ: pair.pdfQB64, pdfA: pair.pdfAB64 };

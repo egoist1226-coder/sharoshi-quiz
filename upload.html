@@ -233,18 +233,41 @@
     const savedSecret = localStorage.getItem('upload_secret');
     if (savedSecret) document.getElementById('upload-secret').value = savedSecret;
 
-    if (!localStorage.getItem('worker_url')) {
+    const savedUrl = localStorage.getItem('worker_url') || '';
+    const isValidWorkerUrl = savedUrl.includes('workers.dev') || savedUrl.includes('localhost');
+
+    if (!isValidWorkerUrl) {
       document.querySelector('.upload-page').insertAdjacentHTML('afterbegin', `
-        <div class="upload-section" style="background:#fff3cd">
+        <div class="upload-section" style="background:#fff3cd" id="worker-url-box">
           <div class="upload-title">⚠️ Worker URL を設定</div>
+          ${savedUrl ? `<div style="font-size:12px;color:#92400e;margin-bottom:8px;">現在の値（無効）: ${savedUrl}</div>` : ''}
           <div class="form-row">
             <input type="url" id="worker-url-input" class="form-input"
+              value="${savedUrl}"
+              placeholder="https://sharoshi-quiz-worker.egoist1226.workers.dev">
+          </div>
+          <button class="btn-extract" onclick="saveWorkerUrl()" style="background:#d97706">保存する</button>
+        </div>`);
+    } else {
+      document.querySelector('.upload-page').insertAdjacentHTML('afterbegin', `
+        <div style="text-align:right; margin-bottom:4px;">
+          <button onclick="showWorkerUrlEdit()" style="background:none;border:none;color:#94a3b8;font-size:12px;cursor:pointer;">⚙️ Worker URL 変更</button>
+        </div>
+        <div class="upload-section" style="background:#fff3cd;display:none" id="worker-url-box">
+          <div class="upload-title">Worker URL を変更</div>
+          <div class="form-row">
+            <input type="url" id="worker-url-input" class="form-input"
+              value="${savedUrl}"
               placeholder="https://sharoshi-quiz-worker.egoist1226.workers.dev">
           </div>
           <button class="btn-extract" onclick="saveWorkerUrl()" style="background:#d97706">保存する</button>
         </div>`);
     }
   });
+
+  function showWorkerUrlEdit() {
+    document.getElementById('worker-url-box').style.display = '';
+  }
 
   function saveWorkerUrl() {
     const url = document.getElementById('worker-url-input').value.trim();

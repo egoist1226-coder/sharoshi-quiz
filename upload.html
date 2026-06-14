@@ -407,6 +407,7 @@
     document.getElementById('batch-progress-wrap').style.display = 'block';
     document.getElementById('batch-log').innerHTML = '';
     updateBatchProgress(0, pairs.length, '処理を開始します...');
+    addBatchLog(`Worker URL: ${workerUrl}`, 'info');
 
     for (const pair of pairs) {
       if (batchAbortController.signal.aborted) {

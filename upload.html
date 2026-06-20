@@ -211,10 +211,6 @@
       </select>
       <div class="subcat-info-box loading" id="subcat-info">読み込み中…</div>
     </div>
-    <div class="form-row" id="row-start-no" style="display:none">
-      <label class="form-label">開始問題番号（一括モード・IDが1始まりの場合に指定）</label>
-      <input type="number" id="start-no" class="form-input" placeholder="例: 415" min="1">
-    </div>
     <div class="form-row">
       <label class="form-label">認証コード</label>
       <input type="password" id="upload-secret" class="form-input" placeholder="設定したパスワード">
@@ -369,8 +365,6 @@
     extractedQuestions = [];
     document.getElementById('step-preview').style.display = 'none';
     document.getElementById('batch-progress-wrap').style.display = 'none';
-
-    document.getElementById('row-start-no').style.display = mode === 'batch' ? '' : 'none';
 
     if (mode === 'photo') {
       document.getElementById('btn-extract').disabled = !fixedFileQ;
@@ -596,30 +590,6 @@
       ? `停止 — ${extractedQuestions.length}問を取得済み`
       : `完了 — 全${extractedQuestions.length}問を取得しました`;
     updateBatchProgress(pairs.length, pairs.length, summary);
-
-    // ===== 開始問題番号による振り直し =====
-    if (!cancelled && pairResults.length > 0) {
-      const startNo = parseInt(document.getElementById('start-no').value, 10);
-      if (startNo > 0) {
-        const allIds = pairResults.flatMap(pr => pr.ids);
-        const minId = allIds.length > 0 ? Math.min(...allIds) : 0;
-        if (minId < startNo) {
-          let counter = startNo;
-          for (const pr of pairResults) {
-            const newIds = [];
-            for (const q of pr.questions) {
-              q.id = counter;
-              q.source_no = counter;
-              newIds.push(counter);
-              counter++;
-            }
-            pr.ids = newIds;
-          }
-          extractedQuestions = pairResults.flatMap(pr => pr.questions);
-          addBatchLog(`🔢 開始番号${startNo}で振り直し完了（問${startNo}〜問${counter - 1}）`, 'info');
-        }
-      }
-    }
 
     // ===== 問題数の整合性チェック =====
     if (!cancelled && extractedQuestions.length > 0) {

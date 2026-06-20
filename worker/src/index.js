@@ -215,7 +215,8 @@ async function handleExtract(request, env) {
   // OCRが H→4, R→5 と誤読することがあり問題番号と誤認識される原因となる
   const stripExamCodes = (text) => text
     .replace(/[HR元][\d元]{1,2}[.．][\d]{1,2}[-－][アイウエオA-Z]/g, '')
-    .replace(/[45][\d]{1,2}[.．][\d]{1,2}[-－][アイウエオA-Z]/g, ''); // H→4, R→5 誤読パターンも除去
+    .replace(/[45][\d]{1,2}[.．][\d]{1,2}[-－][アイウエオA-Z]/g, '') // H→4, R→5 誤読パターンも除去
+    .replace(/必修基本書[^\n]*/g, ''); // 「必修基本書 社会保険科目……321p」などの参照ページ行を除去
 
   // contentを構築する関数
   const buildContent = (retryNote = '') => {

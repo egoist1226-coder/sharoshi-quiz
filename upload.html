@@ -547,16 +547,24 @@
 
       updateBatchProgress(pair.pairNo - 1, pairs.length, `ペア ${pair.pairNo} / ${pairs.length} を抽出中...`);
 
-      // 両ページを常にJPEG画像で送信
-      // （解説ページは2段組レイアウトのためOCRテキストだと段が混在する。
-      //   問題ページも冒頭行がOCRで読み取れないケースがあるため画像が必要）
+      // OCRテキスト抽出（Adobe Scan のテキスト層を直接使用）
       let body;
       try {
-        const imgQ = await renderPdfPageToJpeg(pdfDoc, pair.pageQ);
-        const imgA = await renderPdfPageToJpeg(pdfDoc, pair.pageA);
-        const pairSizeKB = Math.round((imgQ.length + imgA.length) / 1024);
-        addBatchLog(`ペア ${pair.pairNo} 送信中... (JPEG ${pairSizeKB} KB)`, 'info');
-        body = { imageQ: imgQ, mimeTypeQ: 'image/jpeg', imageA: imgA, mimeTypeA: 'image/jpeg' };
+        const textQ = await extractPdfPageText(pdfDoc, pair.pageQ);
+        const textA = await extractPdfPageText(pdfDoc, pair.pageA);
+
+        if (textQ && textA && textQ.trim().length > 30) {
+          // OCRテキストが取得できた場合（Adobe Scan等）
+          addBatchLog(`ペア ${pair.pairNo} 送信中... (OCR ${textQ.length + textA.length} 文字)`, 'info');
+          body = { textQ, textA };
+        } else {
+          // テキスト層がない場合はJPEGにフォールバック
+          const imgQ = await renderPdfPageToJpeg(pdfDoc, pair.pageQ);
+          const imgA = await renderPdfPageToJpeg(pdfDoc, pair.pageA);
+          const pairSizeKB = Math.round((imgQ.length + imgA.length) / 1024);
+          addBatchLog(`ペア ${pair.pairNo} 送信中... (JPEG ${pairSizeKB} KB)`, 'info');
+          body = { imageQ: imgQ, mimeTypeQ: 'image/jpeg', imageA: imgA, mimeTypeA: 'image/jpeg' };
+        }
       } catch(e) {
         addBatchLog(`ペア ${pair.pairNo} ❌ PDF読取エラー: ${e.message}`, 'err');
         errorItems.push({ pairNo: pair.pairNo, msg: 'PDF読取エラー: ' + e.message });

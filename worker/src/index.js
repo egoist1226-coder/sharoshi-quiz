@@ -16,7 +16,7 @@ const CHARS_PER_LINE = 37;
 function buildPrompt(isTwoPage, retryNote = '', isTextMode = false) {
   let base;
   if (isTextMode) {
-    base = `以下は社労士試験問題集のOCRテキストです（問題ページと解説ページ）。問題番号で対応させてすべての問題を抽出してください。`;
+    base = `以下は社労士試験問題集の2ページ分のOCRテキストです。一方が問題ページ、もう一方が解答・解説ページですが、スキャンの都合により順序が前後している場合があります。内容から自動的にどちらが問題ページでどちらが解説ページかを判定し、問題番号で対応させてすべての問題を抽出してください。`;
   } else if (isTwoPage) {
     base = `2ページのコンテンツ（1ページ目が問題、2ページ目が解答・解説）は社労士試験の問題集です。問題番号で対応させてすべての問題を抽出してください。`;
   } else {
@@ -28,8 +28,8 @@ function buildPrompt(isTwoPage, retryNote = '', isTextMode = false) {
     : '';
 
   const lineCountRule = isTextMode ? '' : `
-- line_count: 問題文本文のみの印刷行数を正確に数える（1行37文字）。問題番号・難易度ラベル・試験回次（例：「379 □□□ 難 R元.5-ア」）の行はline_countに含めないこと
-- last_line_half: 最終行の文字数が左半分（1〜18文字）なら "left"、右半分（19〜37文字）なら "right" と記録する
+- line_count: 問題文本文のみの印刷行数を数える（1行37文字）。問題番号・難易度ラベル・試験回次（例：「379 □□□ 難 R元.5-ア」）の行は含めない。最終行が途中で終わる場合も必ず1行としてカウントする（例：4完全行＋短い5行目 → line_count:5）
+- last_line_half: 最終行の文字数が左半分（1〜18文字）なら "left"、右半分（19〜37文字）なら "right"
 - ※ 括弧「(」「)」やピリオド「.」などの半角文字は0.5文字としてカウントする`;
 
   const lineCountJson = isTextMode ? '' : `

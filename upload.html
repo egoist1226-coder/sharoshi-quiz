@@ -89,6 +89,37 @@
       margin-bottom: 8px; font-size: 12px; color: #991b1b;
     }
     .review-error-card strong { display: block; margin-bottom: 4px; }
+
+    /* サブカテゴリ収録状況 */
+    .subcat-info-box {
+      margin-top: 8px; padding: 10px 12px; background: #f0fdf4;
+      border-radius: 8px; font-size: 12px; line-height: 1.7; min-height: 32px;
+      border: 1px solid #bbf7d0;
+    }
+    .subcat-info-box.loading { background: #f8fafc; color: #94a3b8; border-color: #e2e8f0; }
+    .subcat-info-box.has-missing { background: #fefce8; border-color: #fde047; }
+
+    /* ペア選択カード */
+    .pair-select-card {
+      background: #f8fafc; border-radius: 8px; padding: 11px 12px;
+      margin-bottom: 8px; border: 2px solid #e2e8f0;
+    }
+    .pair-select-card.pair-ok   { border-color: #86efac; }
+    .pair-select-card.pair-warn { border-color: #fca5a5; background: #fef2f2; }
+    .pair-select-label {
+      display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 13px;
+    }
+    .pair-select-label input[type=checkbox] { width: 18px; height: 18px; flex-shrink: 0; }
+    .pair-select-label .pair-title { font-weight: 700; color: #1e293b; }
+    .pair-select-label .pair-ids   { color: #475569; font-size: 12px; margin-top: 2px; }
+    .pair-select-wrap { display: flex; flex-direction: column; }
+    .pair-select-actions {
+      display: flex; gap: 8px; margin-bottom: 10px;
+    }
+    .pair-select-actions button {
+      padding: 6px 14px; border-radius: 6px; border: 1px solid #cbd5e1;
+      background: #f1f5f9; font-size: 12px; cursor: pointer; color: #475569;
+    }
   </style>
 </head>
 <body>
@@ -154,7 +185,7 @@
     <div class="upload-title">② 登録先を選択</div>
     <div class="form-row">
       <label class="form-label">登録先ファイル</label>
-      <select id="subcat-file" class="form-select">
+      <select id="subcat-file" class="form-select" onchange="loadSubcatInfo()">
         <option value="kousei_nenkin_01">厚生年金保険法 ①被保険者</option>
         <option value="kousei_nenkin_02">厚生年金保険法 ②標準報酬月額等</option>
         <option value="kousei_nenkin_03">厚生年金保険法 ③保険給付通則</option>
@@ -178,6 +209,11 @@
         <option value="kousei_nenkin_21">厚生年金保険法 ㉑雑則・罰則</option>
         <option value="kenkou_hoken_05">健康保険法 ⑤その他</option>
       </select>
+      <div class="subcat-info-box loading" id="subcat-info">読み込み中…</div>
+    </div>
+    <div class="form-row" id="row-start-no" style="display:none">
+      <label class="form-label">開始問題番号（一括モード・IDが1始まりの場合に指定）</label>
+      <input type="number" id="start-no" class="form-input" placeholder="例: 415" min="1">
     </div>
     <div class="form-row">
       <label class="form-label">認証コード</label>
@@ -223,6 +259,7 @@
   let uploadMode = 'photo'; // 'photo' | 'batch'
   let batchPdfFile = null;
   let batchAbortController = null;
+  let pairResults = []; // [{ pairNo, questions, ids }]
 
   // PDF.js ワーカー設定
   pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -232,6 +269,8 @@
   window.addEventListener('DOMContentLoaded', () => {
     const savedSecret = localStorage.getItem('upload_secret');
     if (savedSecret) document.getElementById('upload-secret').value = savedSecret;
+
+    loadSubcatInfo();
 
     const savedUrl = localStorage.getItem('worker_url') || '';
     const isValidWorkerUrl = savedUrl.includes('workers.dev') || savedUrl.includes('localhost');
@@ -276,6 +315,48 @@
     location.reload();
   }
 
+  // ===== サブカテゴリ収録状況 =====
+  async function loadSubcatInfo() {
+    const el = document.getElementById('subcat-info');
+    const subcatFile = document.getElementById('subcat-file').value;
+    el.className = 'subcat-info-box loading';
+    el.textContent = '読み込み中…';
+    try {
+      const res = await fetch(
+        `https://raw.githubusercontent.com/egoist1226-coder/sharoshi-quiz/master/data/${subcatFile}.json`,
+        { cache: 'no-store' }
+      );
+      if (!res.ok) { showSubcatInfo([], el); return; }
+      const data = await res.json();
+      showSubcatInfo(data, el);
+    } catch(e) {
+      el.className = 'subcat-info-box loading';
+      el.textContent = '取得失敗（オフライン？）';
+    }
+  }
+
+  function showSubcatInfo(data, el) {
+    if (!el) el = document.getElementById('subcat-info');
+    if (!Array.isArray(data) || data.length === 0) {
+      el.className = 'subcat-info-box';
+      el.innerHTML = '<span style="color:#64748b">収録済み: 0問（未登録）</span>';
+      return;
+    }
+    const ids = data.map(q => q.id).filter(id => typeof id === 'number').sort((a, b) => a - b);
+    const minId = ids[0], maxId = ids[ids.length - 1];
+    const idSet = new Set(ids);
+    const missing = [];
+    for (let i = minId; i <= maxId; i++) { if (!idSet.has(i)) missing.push(i); }
+    let html = `<span style="color:#166534;font-weight:600">収録済み: ${ids.length}問（問${minId}〜問${maxId}）</span>`;
+    if (missing.length > 0) {
+      el.className = 'subcat-info-box has-missing';
+      html += `<br><span style="color:#92400e;font-weight:600">未収録: 問${missing.join('・問')}</span>`;
+    } else {
+      el.className = 'subcat-info-box';
+    }
+    el.innerHTML = html;
+  }
+
   // ===== モード切替 =====
   function switchMode(mode) {
     uploadMode = mode;
@@ -289,11 +370,11 @@
     document.getElementById('step-preview').style.display = 'none';
     document.getElementById('batch-progress-wrap').style.display = 'none';
 
+    document.getElementById('row-start-no').style.display = mode === 'batch' ? '' : 'none';
+
     if (mode === 'photo') {
-      // 写真モード：問題ページ選択済みなら有効
       document.getElementById('btn-extract').disabled = !fixedFileQ;
     } else {
-      // 連続PDFモード：PDF選択済みなら有効
       document.getElementById('btn-extract').disabled = !batchPdfFile;
     }
   }
@@ -433,8 +514,8 @@
 
     setExtracting(true);
     extractedQuestions = [];
+    pairResults = [];
     const errorItems = [];
-    const pairResults = []; // { pairNo, ids: [...] }
 
     // 中断コントローラー初期化・停止ボタン表示
     batchAbortController = new AbortController();
@@ -491,9 +572,9 @@
           errorItems.push({ pairNo: pair.pairNo, msg });
           addBatchLog(`ペア ${pair.pairNo} ❌ ${msg}`, 'err');
         } else {
-          extractedQuestions.push(...data.questions);
           const pairIds = data.questions.map(q => q.id).filter(id => typeof id === 'number').sort((a, b) => a - b);
-          pairResults.push({ pairNo: pair.pairNo, ids: pairIds });
+          pairResults.push({ pairNo: pair.pairNo, questions: data.questions, ids: pairIds });
+          extractedQuestions.push(...data.questions);
           const idRange = pairIds.length > 0 ? ` [問${pairIds[0]}〜${pairIds[pairIds.length - 1]}]` : '';
           const rev = data.review_count > 0 ? ` ⚠️ 要確認${data.review_count}問` : '';
           addBatchLog(`ペア ${pair.pairNo} ✅ ${data.questions.length}問取得${rev}${idRange}`, 'ok');
@@ -515,6 +596,30 @@
       ? `停止 — ${extractedQuestions.length}問を取得済み`
       : `完了 — 全${extractedQuestions.length}問を取得しました`;
     updateBatchProgress(pairs.length, pairs.length, summary);
+
+    // ===== 開始問題番号による振り直し =====
+    if (!cancelled && pairResults.length > 0) {
+      const startNo = parseInt(document.getElementById('start-no').value, 10);
+      if (startNo > 0) {
+        const allIds = pairResults.flatMap(pr => pr.ids);
+        const minId = allIds.length > 0 ? Math.min(...allIds) : 0;
+        if (minId < startNo) {
+          let counter = startNo;
+          for (const pr of pairResults) {
+            const newIds = [];
+            for (const q of pr.questions) {
+              q.id = counter;
+              q.source_no = counter;
+              newIds.push(counter);
+              counter++;
+            }
+            pr.ids = newIds;
+          }
+          extractedQuestions = pairResults.flatMap(pr => pr.questions);
+          addBatchLog(`🔢 開始番号${startNo}で振り直し完了（問${startNo}〜問${counter - 1}）`, 'info');
+        }
+      }
+    }
 
     // ===== 問題数の整合性チェック =====
     if (!cancelled && extractedQuestions.length > 0) {
@@ -600,30 +705,83 @@
     document.getElementById('step-preview').style.display = 'block';
     document.getElementById('q-count').textContent = `${questions.length}問`;
 
-    const errHtml = errors.map(e => `
-      <div class="review-error-card">
-        <strong>⚠️ ペア ${e.pairNo} 抽出失敗</strong>${e.msg}
-      </div>`).join('');
-
     const list = document.getElementById('preview-list');
-    list.innerHTML = errHtml + questions.map(q => `
-      <div class="q-card ${q.review_needed ? 'review-needed' : ''}">
-        <div class="q-id">問${q.id}（${q.category}）${q.review_needed ? ' ⚠️要確認' : ''}</div>
-        <div class="q-text">${q.question}</div>
-        <div class="q-answer ${q.answer ? '' : 'wrong'}">
-          答：${q.answer ? '○（正しい）' : '×（誤り）'}
+
+    if (uploadMode === 'batch' && pairResults.length > 0) {
+      // ---- 一括モード：ペア選択カード ----
+      const errHtml = errors.map(e => `
+        <div class="review-error-card">
+          <strong>⚠️ ペア ${e.pairNo} 抽出失敗</strong> ${e.msg}
+        </div>`).join('');
+
+      const pairCards = pairResults.map(pr => {
+        const ids = pr.ids;
+        const minId = ids.length > 0 ? Math.min(...ids) : '?';
+        const maxId = ids.length > 0 ? Math.max(...ids) : '?';
+        const pExpected = ids.length > 0 ? (maxId - minId + 1) : 0;
+        const hasGap = ids.length > 0 && ids.length !== pExpected;
+        const cardClass = hasGap ? 'pair-warn' : 'pair-ok';
+        const gapNote = hasGap ? ` ⚠️ 期待${pExpected}問` : '';
+        const idList = ids.map(id => `問${id}`).join('・');
+        return `
+          <div class="pair-select-card ${cardClass}">
+            <label class="pair-select-label">
+              <input type="checkbox" id="pair-check-${pr.pairNo}" ${hasGap ? '' : 'checked'}>
+              <div class="pair-select-wrap">
+                <span class="pair-title">ペア ${pr.pairNo}：${pr.questions.length}問取得${gapNote}</span>
+                <span class="pair-ids">${ids.length > 0 ? `問${minId}〜問${maxId}　${idList}` : '問番号なし'}</span>
+              </div>
+            </label>
+          </div>`;
+      }).join('');
+
+      list.innerHTML = `
+        <div class="pair-select-actions">
+          <button onclick="setAllPairChecks(true)">すべて選択</button>
+          <button onclick="setAllPairChecks(false)">すべて解除</button>
         </div>
-        <div class="q-exp">${q.explanation || ''}</div>
-        ${q.review_needed ? `<div style="margin-top:6px;color:#b45309;font-size:11px;font-weight:600;">${q.review_info || ''}</div>` : ''}
-      </div>
-    `).join('');
+        ${errHtml}${pairCards}`;
+    } else {
+      // ---- 単体モード：問題カード ----
+      list.innerHTML = questions.map(q => `
+        <div class="q-card ${q.review_needed ? 'review-needed' : ''}">
+          <div class="q-id">問${q.id}（${q.category}）${q.review_needed ? ' ⚠️要確認' : ''}</div>
+          <div class="q-text">${q.question}</div>
+          <div class="q-answer ${q.answer ? '' : 'wrong'}">
+            答：${q.answer ? '○（正しい）' : '×（誤り）'}
+          </div>
+          <div class="q-exp">${q.explanation || ''}</div>
+          ${q.review_needed ? `<div style="margin-top:6px;color:#b45309;font-size:11px;font-weight:600;">${q.review_info || ''}</div>` : ''}
+        </div>
+      `).join('');
+    }
 
     document.getElementById('step-preview').scrollIntoView({ behavior: 'smooth' });
   }
 
+  function setAllPairChecks(checked) {
+    pairResults.forEach(pr => {
+      const cb = document.getElementById(`pair-check-${pr.pairNo}`);
+      if (cb) cb.checked = checked;
+    });
+  }
+
   // ===== コミット =====
   async function commitQuestions() {
-    if (extractedQuestions.length === 0) return;
+    // 一括モードはチェック済みペアのみ、単体モードは全問
+    let questionsToCommit;
+    if (uploadMode === 'batch' && pairResults.length > 0) {
+      questionsToCommit = pairResults
+        .filter(pr => document.getElementById(`pair-check-${pr.pairNo}`)?.checked)
+        .flatMap(pr => pr.questions);
+      if (questionsToCommit.length === 0) {
+        alert('登録するペアを1つ以上選択してください。');
+        return;
+      }
+    } else {
+      questionsToCommit = extractedQuestions;
+    }
+    if (questionsToCommit.length === 0) return;
 
     const secret     = document.getElementById('upload-secret').value;
     const subcatFile = document.getElementById('subcat-file').value;
@@ -638,7 +796,7 @@
       const res = await fetch(`${workerUrl}/commit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Upload-Secret': secret },
-        body: JSON.stringify({ questions: extractedQuestions, subcatFile })
+        body: JSON.stringify({ questions: questionsToCommit, subcatFile })
       });
       const data = await res.json();
       if (!res.ok || !data.success)
@@ -649,6 +807,7 @@
           ✅ ${data.added}問を登録しました！<br>
           GitHub Pages に反映されるまで約5〜10分かかります。
         </div>`;
+      loadSubcatInfo();
     } catch (err) {
       statusEl.innerHTML = `<div class="status-box error">❌ ${err.message}</div>`;
       btn.disabled = false;

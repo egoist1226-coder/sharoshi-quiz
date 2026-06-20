@@ -434,6 +434,7 @@
     setExtracting(true);
     extractedQuestions = [];
     const errorItems = [];
+    const pairResults = []; // { pairNo, ids: [...] }
 
     // 中断コントローラー初期化・停止ボタン表示
     batchAbortController = new AbortController();
@@ -491,8 +492,11 @@
           addBatchLog(`ペア ${pair.pairNo} ❌ ${msg}`, 'err');
         } else {
           extractedQuestions.push(...data.questions);
+          const pairIds = data.questions.map(q => q.id).filter(id => typeof id === 'number').sort((a, b) => a - b);
+          pairResults.push({ pairNo: pair.pairNo, ids: pairIds });
+          const idRange = pairIds.length > 0 ? ` [問${pairIds[0]}〜${pairIds[pairIds.length - 1]}]` : '';
           const rev = data.review_count > 0 ? ` ⚠️ 要確認${data.review_count}問` : '';
-          addBatchLog(`ペア ${pair.pairNo} ✅ ${data.questions.length}問取得${rev}`, 'ok');
+          addBatchLog(`ペア ${pair.pairNo} ✅ ${data.questions.length}問取得${rev}${idRange}`, 'ok');
         }
       } catch(e) {
         const msg = e.message || '通信エラー';
@@ -511,6 +515,36 @@
       ? `停止 — ${extractedQuestions.length}問を取得済み`
       : `完了 — 全${extractedQuestions.length}問を取得しました`;
     updateBatchProgress(pairs.length, pairs.length, summary);
+
+    // ===== 問題数の整合性チェック =====
+    if (!cancelled && extractedQuestions.length > 0) {
+      const allIds = extractedQuestions.map(q => q.id).filter(id => typeof id === 'number');
+      if (allIds.length > 0) {
+        const minId = Math.min(...allIds);
+        const maxId = Math.max(...allIds);
+        const expected = maxId - minId + 1;
+        const actual = allIds.length;
+        if (actual === expected) {
+          addBatchLog(`✅ 問題数確認OK: ${actual}問（問${minId}〜${maxId}）`, 'ok');
+        } else {
+          addBatchLog(`⚠️ 問題数不一致: 取得${actual}問 / 期待${expected}問（問${minId}〜${maxId}）`, 'err');
+          addBatchLog('── ペア別内訳 ──', 'info');
+          for (const pr of pairResults) {
+            if (pr.ids.length === 0) {
+              addBatchLog(`  ペア${pr.pairNo}: 取得なし`, 'err');
+            } else {
+              const pMin = pr.ids[0];
+              const pMax = pr.ids[pr.ids.length - 1];
+              const pExpected = pMax - pMin + 1;
+              const ok = pr.ids.length === pExpected;
+              const mark = ok ? '✅' : '❌';
+              addBatchLog(`  ${mark} ペア${pr.pairNo}: 問${pMin}〜${pMax} ${pr.ids.length}問${ok ? '' : `（期待${pExpected}問）`}`, ok ? 'ok' : 'err');
+            }
+          }
+        }
+      }
+    }
+
     setExtracting(false);
     if (extractedQuestions.length > 0) showPreview(extractedQuestions, errorItems);
   }

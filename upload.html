@@ -120,6 +120,14 @@
       padding: 6px 14px; border-radius: 6px; border: 1px solid #cbd5e1;
       background: #f1f5f9; font-size: 12px; cursor: pointer; color: #475569;
     }
+    .pair-startno-row {
+      display: flex; align-items: center; gap: 8px; margin-top: 8px;
+      padding-top: 8px; border-top: 1px dashed #fca5a5;
+    }
+    .pair-startno-row label { font-size: 12px; color: #92400e; font-weight: 600; white-space: nowrap; }
+    .pair-startno-row input { width: 80px; padding: 4px 8px; border: 1px solid #f87171;
+      border-radius: 6px; font-size: 13px; font-weight: 700; color: #1e293b; }
+    .pair-startno-row span  { font-size: 11px; color: #64748b; }
   </style>
 </head>
 <body>
@@ -686,22 +694,45 @@
 
       const pairCards = pairResults.map(pr => {
         const ids = pr.ids;
+        const n = pr.questions.length;
+        const seqUndetected = isSequentialFrom1(ids); // 赤背景白抜きのためOCR不可
         const minId = ids.length > 0 ? Math.min(...ids) : '?';
         const maxId = ids.length > 0 ? Math.max(...ids) : '?';
-        const pExpected = ids.length > 0 ? (maxId - minId + 1) : 0;
-        const hasGap = ids.length > 0 && ids.length !== pExpected;
-        const cardClass = hasGap ? 'pair-warn' : 'pair-ok';
-        const gapNote = hasGap ? ` ⚠️ 期待${pExpected}問` : '';
-        const idList = ids.map(id => `問${id}`).join('・');
+        const pExpected = (!seqUndetected && ids.length > 0) ? (maxId - minId + 1) : n;
+        const hasGap = !seqUndetected && ids.length > 0 && ids.length !== pExpected;
+        const cardClass = (seqUndetected || hasGap) ? 'pair-warn' : 'pair-ok';
+        const autoCheck = !seqUndetected && !hasGap;
+
+        let statusLine, startNoRow;
+        if (seqUndetected) {
+          statusLine = `<span class="pair-title">ペア ${pr.pairNo}：${n}問取得 ⚠️ 問番号未検出（赤背景白抜き）</span>
+                        <span class="pair-ids">OCRで番号読取不可 — 下欄に開始番号を入力してください</span>`;
+          startNoRow = `
+            <div class="pair-startno-row">
+              <label for="pair-startno-${pr.pairNo}">開始問題番号:</label>
+              <input type="number" id="pair-startno-${pr.pairNo}" placeholder="例: 415" min="1"
+                     oninput="updatePairPreview(${pr.pairNo})">
+              <span id="pair-startno-preview-${pr.pairNo}">${n}問を連番で登録</span>
+            </div>`;
+        } else if (hasGap) {
+          const idList = ids.map(id => `問${id}`).join('・');
+          statusLine = `<span class="pair-title">ペア ${pr.pairNo}：${n}問取得 ⚠️ 欠番あり（期待${pExpected}問）</span>
+                        <span class="pair-ids">問${minId}〜問${maxId}　${idList}</span>`;
+          startNoRow = '';
+        } else {
+          const idList = ids.map(id => `問${id}`).join('・');
+          statusLine = `<span class="pair-title">ペア ${pr.pairNo}：${n}問取得</span>
+                        <span class="pair-ids">問${minId}〜問${maxId}　${idList}</span>`;
+          startNoRow = '';
+        }
+
         return `
           <div class="pair-select-card ${cardClass}">
             <label class="pair-select-label">
-              <input type="checkbox" id="pair-check-${pr.pairNo}" ${hasGap ? '' : 'checked'}>
-              <div class="pair-select-wrap">
-                <span class="pair-title">ペア ${pr.pairNo}：${pr.questions.length}問取得${gapNote}</span>
-                <span class="pair-ids">${ids.length > 0 ? `問${minId}〜問${maxId}　${idList}` : '問番号なし'}</span>
-              </div>
+              <input type="checkbox" id="pair-check-${pr.pairNo}" ${autoCheck ? 'checked' : ''}>
+              <div class="pair-select-wrap">${statusLine}</div>
             </label>
+            ${startNoRow}
           </div>`;
       }).join('');
 
@@ -736,17 +767,52 @@
     });
   }
 
+  function isSequentialFrom1(ids) {
+    if (ids.length === 0) return false;
+    return ids.every((id, i) => id === i + 1);
+  }
+
+  function updatePairPreview(pairNo) {
+    const pr = pairResults.find(p => p.pairNo === pairNo);
+    if (!pr) return;
+    const startNo = parseInt(document.getElementById(`pair-startno-${pairNo}`)?.value, 10);
+    const el = document.getElementById(`pair-startno-preview-${pairNo}`);
+    if (!el) return;
+    if (startNo > 0) {
+      const end = startNo + pr.questions.length - 1;
+      el.textContent = `→ 問${startNo}〜問${end}（${pr.questions.length}問）`;
+      el.style.color = '#166534';
+    } else {
+      el.textContent = `${pr.questions.length}問を連番で登録`;
+      el.style.color = '';
+    }
+  }
+
   // ===== コミット =====
   async function commitQuestions() {
     // 一括モードはチェック済みペアのみ、単体モードは全問
     let questionsToCommit;
     if (uploadMode === 'batch' && pairResults.length > 0) {
-      questionsToCommit = pairResults
-        .filter(pr => document.getElementById(`pair-check-${pr.pairNo}`)?.checked)
-        .flatMap(pr => pr.questions);
-      if (questionsToCommit.length === 0) {
+      const checkedPairs = pairResults.filter(pr => document.getElementById(`pair-check-${pr.pairNo}`)?.checked);
+      if (checkedPairs.length === 0) {
         alert('登録するペアを1つ以上選択してください。');
         return;
+      }
+      questionsToCommit = [];
+      for (const pr of checkedPairs) {
+        const startNoInput = document.getElementById(`pair-startno-${pr.pairNo}`);
+        const startNo = startNoInput ? parseInt(startNoInput.value, 10) : NaN;
+        if (!isNaN(startNo) && startNo > 0) {
+          // 開始番号が指定されている場合：そのペアだけ独立して番号を振り直す
+          const renumbered = pr.questions.map((q, i) => ({ ...q, id: startNo + i, source_no: startNo + i }));
+          questionsToCommit.push(...renumbered);
+        } else if (isSequentialFrom1(pr.ids)) {
+          // 番号未検出で開始番号も未入力：コミット拒否
+          alert(`ペア${pr.pairNo}の開始問題番号が未入力です。入力してから再度お試しください。`);
+          return;
+        } else {
+          questionsToCommit.push(...pr.questions);
+        }
       }
     } else {
       questionsToCommit = extractedQuestions;

@@ -230,6 +230,14 @@
       <div class="subcat-info-box loading" id="subcat-info">読み込み中…</div>
     </div>
     <div class="form-row">
+      <label class="form-label">開始問題番号（推奨・OCR誤読対策）</label>
+      <input type="number" id="start-no" class="form-input" placeholder="例：419（空欄ならOCRの番号を使用）">
+      <div style="font-size:11px;color:#64748b;margin-top:4px;line-height:1.5;">
+        ここに番号を入れると、抽出された問題を<b>この番号から順番に採番</b>します（OCRの番号読み取りは無視）。<br>
+        例：419 と入れて3問抽出 → 問419・問420・問421。最も確実な方法です。
+      </div>
+    </div>
+    <div class="form-row">
       <label class="form-label">認証コード</label>
       <input type="password" id="upload-secret" class="form-input" placeholder="設定したパスワード">
     </div>
@@ -369,6 +377,10 @@
       el.className = 'subcat-info-box';
     }
     el.innerHTML = html;
+
+    // 開始問題番号を「収録済みの最大＋1」で自動提案（ユーザーは上書き可）
+    const startInput = document.getElementById('start-no');
+    if (startInput) startInput.placeholder = `例：${maxId + 1}（収録済み最大+1）`;
   }
 
   // ===== モード切替 =====
@@ -489,6 +501,10 @@
         throw new Error((data.error || 'Extraction failed') + (data.detail ? '\n' + data.detail : ''));
 
       extractedQuestions = data.questions;
+      const startNo = parseInt(document.getElementById('start-no').value, 10);
+      if (Number.isFinite(startNo) && extractedQuestions.length > 0) {
+        renumberSequential(extractedQuestions, startNo);
+      }
       showPreview(extractedQuestions);
     } catch (err) {
       alert('エラー: ' + err.message);
@@ -610,6 +626,18 @@
       : `完了 — 全${extractedQuestions.length}問を取得しました`;
     updateBatchProgress(pairs.length, pairs.length, summary);
 
+    // ===== 開始番号が指定されていれば、抽出順に機械的に採番（OCR番号を無視）=====
+    const startNo = parseInt(document.getElementById('start-no').value, 10);
+    if (Number.isFinite(startNo) && extractedQuestions.length > 0) {
+      renumberSequential(extractedQuestions, startNo);
+      // ペア別内訳ログ用のidも振り直す（抽出順に連番）
+      let cur = startNo;
+      for (const pr of pairResults) {
+        pr.ids = pr.questions.map(() => cur++);
+      }
+      addBatchLog(`🔢 開始番号 ${startNo} から順番に採番しました（問${startNo}〜${startNo + extractedQuestions.length - 1}）`, 'ok');
+    }
+
     // ===== 問題数の整合性チェック =====
     if (!cancelled && extractedQuestions.length > 0) {
       const allIds = extractedQuestions.map(q => q.id).filter(id => typeof id === 'number');
@@ -678,6 +706,17 @@
   function updateBatchProgress(done, total, text) {
     document.getElementById('batch-status-text').textContent = text;
     document.getElementById('batch-progress-bar').style.width = `${Math.round((done / total) * 100)}%`;
+  }
+
+  // 抽出された問題を「抽出順」に開始番号から機械的に採番する（OCRの番号読み取りを無視）
+  function renumberSequential(questions, startNo) {
+    questions.forEach((q, i) => {
+      q.id = startNo + i;
+      q.source_no = startNo + i;
+      // 手動採番した問題は番号確定なので要確認フラグを解除
+      delete q.review_needed;
+      delete q.review_info;
+    });
   }
 
   function addBatchLog(msg, type) {

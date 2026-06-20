@@ -18,7 +18,7 @@ function buildPrompt(isTwoPage, retryNote = '', isTextMode = false) {
   if (isTextMode) {
     base = `以下は社労士試験問題集の2ページ分のOCRテキストです。一方が問題ページ、もう一方が解答・解説ページですが、スキャンの都合により順序が前後している場合があります。内容から自動的にどちらが問題ページでどちらが解説ページかを判定し、問題番号で対応させてすべての問題を抽出してください。`;
   } else if (isTwoPage) {
-    base = `2ページのコンテンツ（1ページ目が問題、2ページ目が解答・解説）は社労士試験の問題集です。問題番号で対応させてすべての問題を抽出してください。`;
+    base = `2ページのコンテンツは社労士試験の問題集です（問題ページと解答・解説ページ）。問題番号で対応させてすべての問題を抽出してください。`;
   } else {
     base = `このページは社労士試験の問題集です。ページに掲載されているすべての問題を抽出してください。`;
   }
@@ -38,11 +38,14 @@ function buildPrompt(isTwoPage, retryNote = '', isTextMode = false) {
 
   return `${base}${retrySection}
 
-抽出ルール：
-- 問題番号は解説ページ（○×ラベルの直後）に記載された数値をそのままidおよびsource_noに使うこと。例：解説ページに「× 419」とあれば id:419
-- 【厳禁】以下の数字を問題番号として使ってはならない：①〜⑤などの章番号・「H28」「H29」「H30」「R2」「R3」などの試験年度・「-ア」「-ウ」「四」などの問題枝記号。これらは章・年度・枝を示すものであり問題番号ではない
-- 問題番号が読み取れない場合はid:0とし、絶対に推定・補完・連番をしないこと
-- ページ内のすべての問題を漏れなく抽出すること（問題番号が飛んでいる場合も含め、印刷されているすべての問題項目を抽出する）
+【問題番号の読み取りルール（最重要）】
+問題番号は必ず「解説ページ」からのみ取得する。解説ページの各問冒頭に「○ 419」「× 420」のように○か×の直後に問題番号が記載されている。その数値をそのまま id および source_no に使うこと。
+
+【絶対に問題番号として使ってはならないもの】
+問題ページの各問の右端には「H28.7-ウ」「R3.6-B」「H元.5-ア」のような過去問出題履歴コードが印字されている。このコードは「元号（HまたはR）＋年数＋問番号＋枝記号」の形式であり、問題番号とは無関係である。「H」は平成（Heisei）、「R」は令和（Reiwa）の略であって数字ではない。OCRが「H」を「4」に、「R」を「5」に誤読することがあるが、いかなる場合もこれらを問題番号として使用してはならない。
+
+- 問題番号が解説ページから読み取れない場合のみ id:0 とする（推定・連番・補完は絶対禁止）
+- ページ内のすべての問題を漏れなく抽出すること
 - 問題文は問題集の原文を一字一句そのまま忠実に再現すること（修正・要約・補完・言い換えは絶対にしない）
 - 答の○はtrue、×はfalseとする${isTwoPage ? '（解説ページの○×を参照）' : ''}
 - 解説中の赤文字・強調語は <span class="wrong-key">...</span> で囲む
@@ -200,12 +203,19 @@ async function handleExtract(request, env) {
     ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } }
     : { type: 'image',    source: { type: 'base64', media_type: mt || 'image/jpeg',  data } };
 
+  // 問題ページから試験年度コード（H28.7-ウ, R3.6-B 等）を除去
+  // OCRが H→4, R→5 と誤読することがあり問題番号と誤認識される原因となる
+  const stripExamCodes = (text) => text
+    .replace(/[HR元][\d元]{1,2}[.．][\d]{1,2}[-－][アイウエオA-Z]/g, '')
+    .replace(/[45][\d]{1,2}[.．][\d]{1,2}[-－][アイウエオA-Z]/g, ''); // H→4, R→5 誤読パターンも除去
+
   // contentを構築する関数
   const buildContent = (retryNote = '') => {
     const prompt = buildPrompt(isTwoPage, retryNote, isTextMode);
     if (isTextMode) {
+      const cleanQ = stripExamCodes(textQ);
       return [
-        { type: 'text', text: `【問題ページ OCRテキスト】\n${textQ}` },
+        { type: 'text', text: `【問題ページ OCRテキスト】\n${cleanQ}` },
         { type: 'text', text: `【解説ページ OCRテキスト】\n${textA}` },
         { type: 'text', text: prompt }
       ];

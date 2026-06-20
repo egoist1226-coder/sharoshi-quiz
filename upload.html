@@ -556,6 +556,7 @@
         if (textQ && textA && textQ.trim().length > 30) {
           // OCRテキストが取得できた場合（Adobe Scan等）
           addBatchLog(`ペア ${pair.pairNo} 送信中... (OCR ${textQ.length + textA.length} 文字)`, 'info');
+          addOcrDebug(pair.pairNo, textQ, textA);
           body = { textQ, textA };
         } else {
           // テキスト層がない場合はJPEGにフォールバック
@@ -685,6 +686,23 @@
     el.className = `batch-log-item ${type}`;
     el.textContent = msg;
     log.appendChild(el);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  // デバッグ：OCRで抽出された生テキストを折りたたみ表示（問題番号誤読の原因調査用）
+  function addOcrDebug(pairNo, textQ, textA) {
+    const log = document.getElementById('batch-log');
+    const details = document.createElement('details');
+    details.style.cssText = 'margin:4px 0;padding:6px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;font-size:11px;';
+    const summary = document.createElement('summary');
+    summary.style.cssText = 'cursor:pointer;font-weight:600;color:#1e40af;';
+    summary.textContent = `🔍 ペア ${pairNo} OCR生テキスト（タップで展開・原因調査用）`;
+    details.appendChild(summary);
+    const pre = document.createElement('pre');
+    pre.style.cssText = 'white-space:pre-wrap;word-break:break-all;max-height:300px;overflow:auto;margin:6px 0 0;padding:6px;background:#fff;border-radius:4px;line-height:1.5;';
+    pre.textContent = `【問題ページ OCR】\n${textQ}\n\n──────────\n【解説ページ OCR】\n${textA}`;
+    details.appendChild(pre);
+    log.appendChild(details);
     log.scrollTop = log.scrollHeight;
   }
 
